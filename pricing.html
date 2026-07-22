@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pricing | Scan365.ai</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#080f1a;color:#e2eaf4;font-family:'Inter',system-ui,sans-serif;line-height:1.7;}
+  nav{background:#0e1d2f;border-bottom:1px solid #1e3a52;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;}
+  nav .brand{font-weight:800;font-size:18px;color:#fff;}
+  nav .accent{color:#00d4ff;}
+  nav a{color:#00d4ff;text-decoration:none;font-size:14px;font-weight:600;}
+  .container{max-width:1000px;margin:0 auto;padding:60px 24px;}
+  h1{font-size:40px;font-weight:900;color:#fff;text-align:center;margin-bottom:12px;}
+  .sub{color:#5a7a96;text-align:center;font-size:16px;margin-bottom:16px;}
+  .billing-toggle{display:flex;justify-content:center;gap:8px;margin-bottom:48px;}
+  .billing-btn{padding:8px 20px;border-radius:20px;border:1px solid #1e3a52;background:transparent;color:#5a7a96;cursor:pointer;font-size:13px;font-weight:600;}
+  .billing-btn.active{background:#00d4ff;color:#080f1a;border-color:#00d4ff;}
+  .save-badge{background:#10b981;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;margin-left:6px;}
+  .cards{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-bottom:60px;}
+  .card{background:#0e1d2f;border:1px solid #1e3a52;border-radius:20px;padding:32px;flex:1 1 260px;max-width:300px;display:flex;flex-direction:column;gap:16px;position:relative;}
+  .card.popular{border:1.5px solid #00d4ff;background:#0a1e33;}
+  .pop-badge{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:#00d4ff;color:#080f1a;border-radius:20px;padding:4px 16px;font-size:12px;font-weight:800;white-space:nowrap;}
+  .tier{color:#5a7a96;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;}
+  .price{color:#fff;font-size:36px;font-weight:900;}
+  .price span{color:#5a7a96;font-size:14px;font-weight:400;}
+  .features{list-style:none;display:flex;flex-direction:column;gap:10px;flex:1;}
+  .features li{color:#94a3b8;font-size:14px;display:flex;gap:8px;align-items:flex-start;}
+  .features li::before{content:"✓";color:#00d4ff;font-weight:700;flex-shrink:0;}
+  .cta{padding:14px;border-radius:12px;border:none;font-size:15px;font-weight:800;cursor:pointer;width:100%;letter-spacing:0.3px;}
+  .cta-primary{background:linear-gradient(90deg,#00d4ff,#0066ff);color:#080f1a;}
+  .cta-secondary{background:transparent;border:1px solid #1e3a52;color:#e2eaf4;}
+  .compare{max-width:800px;margin:0 auto;}
+  .compare h2{color:#fff;font-size:24px;font-weight:800;text-align:center;margin-bottom:24px;}
+  table{width:100%;border-collapse:collapse;}
+  th{color:#00d4ff;font-size:13px;font-weight:700;text-transform:uppercase;padding:12px 16px;text-align:left;border-bottom:1px solid #1e3a52;}
+  td{padding:12px 16px;font-size:14px;color:#94a3b8;border-bottom:1px solid #0e1d2f;}
+  tr:hover td{background:#0e1d2f;}
+  .check{color:#10b981;font-weight:700;}
+  .cross{color:#ef4444;}
+  footer{border-top:1px solid #1e3a52;padding:24px;text-align:center;color:#5a7a96;font-size:13px;margin-top:60px;}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">🔒 Scan365<span class="accent">.ai</span></span>
+  <a href="https://www.scan365.ai">Back to App</a>
+</nav>
+<div class="container">
+  <h1>Simple, Transparent Pricing</h1>
+  <p class="sub">Start free. Upgrade when you need more.</p>
+
+  <div class="billing-toggle">
+    <button class="billing-btn active">Monthly</button>
+    <button class="billing-btn">Quarterly <span class="save-badge">Save 12%</span></button>
+    <button class="billing-btn">Annual <span class="save-badge">Save 32%</span></button>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="tier">Free</div>
+      <div class="price">$0 <span>/ forever</span></div>
+      <ul class="features">
+        <li>Website & domain security scan</li>
+        <li>Phishing risk score</li>
+        <li>2 scans per month</li>
+        <li>Basic PDF summary report</li>
+        <li>Email support</li>
+      </ul>
+      <button class="cta cta-secondary" onclick="location.href='https://www.scan365.ai'">Get Started Free</button>
+    </div>
+
+    <div class="card popular">
+      <div class="pop-badge">Most Popular</div>
+      <div class="tier">Pro</div>
+      <div class="price">$49 <span>/ month</span></div>
+      <ul class="features">
+        <li>All 4 security scan modules</li>
+        <li>Microsoft 365 & Cloud audit</li>
+        <li>ACSC Essential Eight assessment</li>
+        <li>Unlimited scans per month</li>
+        <li>White-label PDF reports</li>
+        <li>Priority email alerts</li>
+        <li>Historical trend tracking</li>
+        <li>Priority support</li>
+      </ul>
+      <button class="cta cta-primary" onclick="location.href='https://www.scan365.ai'">Start Pro Trial</button>
+    </div>
+
+    <div class="card">
+      <div class="tier">Enterprise</div>
+      <div class="price">Custom</div>
+      <ul class="features">
+        <li>Everything in Pro</li>
+        <li>API access for integrations</li>
+        <li>Multi-tenant dashboard</li>
+        <li>Dedicated account manager</li>
+        <li>SLA guarantee (99.9% uptime)</li>
+        <li>Custom scan modules</li>
+        <li>White-glove onboarding</li>
+        <li>Microsoft Marketplace billing</li>
+      </ul>
+      <button class="cta cta-secondary" onclick="location.href='mailto:admin@itsl.com.au'">Contact Us</button>
+    </div>
+  </div>
+
+  <div class="compare">
+    <h2>Feature Comparison</h2>
+    <table>
+      <tr>
+        <th>Feature</th><th>Free</th><th>Pro</th><th>Enterprise</th>
+      </tr>
+      <tr><td>Website & Domain scan</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>Phishing risk score</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>Microsoft 365 audit</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>ACSC Essential Eight</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>Scans per month</td><td>2</td><td>Unlimited</td><td>Unlimited</td></tr>
+      <tr><td>PDF reports</td><td>Basic</td><td>White-label</td><td>Custom branded</td></tr>
+      <tr><td>API access</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
+      <tr><td>Multi-tenant dashboard</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
+      <tr><td>SLA guarantee</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
+      <tr><td>Support</td><td>Email</td><td>Priority email</td><td>Dedicated manager</td></tr>
+    </table>
+  </div>
+</div>
+<footer>© 2026 IT Service Link (ABN 78 336 526 604) | Scan365.ai | <a href="/terms" style="color:#00d4ff;">Terms</a> | <a href="/privacy" style="color:#00d4ff;">Privacy</a> | <a href="/refunds" style="color:#00d4ff;">Refunds</a></footer>
+</body>
+</html>
