@@ -626,7 +626,7 @@ function ChatBot({user,results}){
       <div style={{position:"fixed",bottom:28,right:28,zIndex:999,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
         {!open&&<div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"10px 16px",fontSize:12,color:C.text,fontWeight:600,boxShadow:"0 4px 16px rgba(0,0,0,0.3)",maxWidth:200,textAlign:"center"}}><div style={{fontSize:10,color:C.muted,marginBottom:2}}>Aria • Security Assistant</div>💬 How can I help you today?</div>}
         <button onClick={()=>setOpen(o=>!o)} style={{width:64,height:64,borderRadius:"50%",border:`2px solid ${C.cyan}`,cursor:"pointer",background:C.surface,padding:0,boxShadow:"0 4px 24px rgba(0,212,255,0.4)",overflow:"hidden",transition:"transform 0.2s"}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.08)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-          {open?<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#00d4ff,#0066ff)",fontSize:22,color:C.bg,fontWeight:800}}>✕</div>:<img src="/aria-avatar.png" alt="Aria" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>}
+          {open?<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#00d4ff,#0066ff)",fontSize:22,color:C.bg,fontWeight:800}}>✕</div>:<img src="./aria-avatar.png" alt="Aria" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>}
         </button>
       </div>
       {open&&(
