@@ -2,7 +2,7 @@
   "name": "scan365",
   "private": true,
   "version": "0.0.0",
-  "homepage": "https://scan365.github.io/Scan365",
+  "homepage": "https://scan365.github.io/Scan365/",
   "type": "module",
   "scripts": {
   "dev": "vite",
