@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FAQ - Scan365.io | Cybersecurity Knowledge Base</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#080f1a;font-family:'Inter',system-ui,sans-serif;color:#e2eaf4;line-height:1.6;}
+
+  /* Nav */
+  nav{background:#0e1d2f;border-bottom:1px solid #1e3a52;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+  .nav-brand{display:flex;align-items:center;gap:10px;text-decoration:none;}
+  .nav-logo{width:40px;height:40px;}
+  .nav-title{font-weight:800;font-size:18px;color:#fff;}
+  .nav-title span{color:#00d4ff;}
+  .nav-sub{font-size:9px;color:#5a7a96;letter-spacing:1px;font-weight:600;display:block;}
+  .nav-links{display:flex;gap:12px;align-items:center;}
+  .nav-links a{color:#5a7a96;text-decoration:none;font-size:13px;font-weight:600;transition:color 0.2s;}
+  .nav-links a:hover{color:#00d4ff;}
+  .btn-signin{background:linear-gradient(90deg,#00d4ff,#0066ff);color:#080f1a !important;border-radius:8px;padding:7px 18px;font-weight:800 !important;}
+
+  /* Hero */
+  .hero{background:linear-gradient(180deg,#0a1e33 0%,#080f1a 100%);padding:64px 24px 48px;text-align:center;border-bottom:1px solid #1e3a52;position:relative;overflow:hidden;}
+  .hero::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2300d4ff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");}
+  .badge{display:inline-block;background:#0a2018;border:1px solid #10b981;color:#10b981;border-radius:20px;padding:5px 16px;font-size:12px;font-weight:700;margin-bottom:20px;letter-spacing:0.5px;}
+  .hero h1{font-size:clamp(28px,4vw,44px);font-weight:900;color:#fff;margin-bottom:16px;line-height:1.1;}
+  .hero h1 span{color:#00d4ff;}
+  .hero p{color:#5a7a96;font-size:16px;max-width:600px;margin:0 auto 32px;line-height:1.7;}
+  .hero-stats{display:flex;gap:32px;justify-content:center;flex-wrap:wrap;}
+  .hero-stat{text-align:center;}
+  .hero-stat-num{font-size:28px;font-weight:900;color:#00d4ff;}
+  .hero-stat-label{font-size:12px;color:#5a7a96;font-weight:600;margin-top:2px;}
+
+  /* Search */
+  .search-wrap{max-width:600px;margin:32px auto 0;position:relative;}
+  .search-wrap input{width:100%;padding:14px 20px 14px 48px;background:#0e1d2f;border:1px solid #1e3a52;border-radius:12px;color:#e2eaf4;font-size:15px;outline:none;transition:border 0.2s;}
+  .search-wrap input:focus{border-color:#00d4ff;}
+  .search-wrap input::placeholder{color:#5a7a96;}
+  .search-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#5a7a96;font-size:18px;}
+
+  /* Layout */
+  .container{max-width:1100px;margin:0 auto;padding:40px 24px 80px;}
+  .layout{display:grid;grid-template-columns:280px 1fr;gap:32px;align-items:start;}
+
+  /* Sidebar */
+  .sidebar{position:sticky;top:80px;}
+  .sidebar-title{color:#5a7a96;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;}
+  .sidebar-nav{display:flex;flex-direction:column;gap:4px;}
+  .sidebar-link{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;color:#5a7a96;text-decoration:none;font-size:13px;font-weight:600;transition:all 0.2s;border:1px solid transparent;cursor:pointer;}
+  .sidebar-link:hover,.sidebar-link.active{background:#0a1e33;border-color:#1e3a52;color:#00d4ff;}
+  .sidebar-link .icon{font-size:16px;flex-shrink:0;}
+  .sidebar-badge{margin-left:auto;background:#132236;color:#5a7a96;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;}
+  .sidebar-divider{height:1px;background:#1e3a52;margin:12px 0;}
+
+  /* Domain cards */
+  .domains{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:40px;}
+  .domain-card{background:#0e1d2f;border:1px solid #1e3a52;border-radius:14px;padding:16px;text-align:center;cursor:pointer;transition:all 0.2s;text-decoration:none;display:block;}
+  .domain-card:hover{border-color:#00d4ff;background:#0a1e33;}
+  .domain-card .icon{font-size:28px;margin-bottom:8px;}
+  .domain-card .title{color:#fff;font-size:13px;font-weight:700;}
+  .domain-card .count{color:#5a7a96;font-size:11px;margin-top:4px;}
+
+  /* Sections */
+  .section{margin-bottom:48px;}
+  .section-header{display:flex;align-items:center;gap:14px;padding:20px 24px;background:#0e1d2f;border:1px solid #1e3a52;border-radius:16px 16px 0 0;border-bottom:2px solid #00d4ff;}
+  .section-icon{font-size:28px;}
+  .section-num{background:linear-gradient(135deg,#00d4ff,#0066ff);color:#080f1a;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0;}
+  .section-title{color:#fff;font-size:18px;font-weight:800;flex:1;}
+  .section-sub{color:#5a7a96;font-size:12px;margin-top:2px;}
+  .section-badge{background:#0a2018;border:1px solid #10b981;color:#10b981;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;}
+  .section-body{background:#0e1d2f;border:1px solid #1e3a52;border-top:none;border-radius:0 0 16px 16px;padding:24px;}
+
+  /* Intro paragraph */
+  .intro-box{background:#0a1e33;border:1px solid #1e3a52;border-left:3px solid #00d4ff;border-radius:0 10px 10px 0;padding:16px 20px;margin-bottom:24px;color:#94a3b8;font-size:14px;line-height:1.7;}
+  .intro-box strong{color:#00d4ff;}
+
+  /* Categories */
+  .categories{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;}
+  .category{background:#132236;border:1px solid #1e3a52;border-radius:12px;overflow:hidden;}
+  .category-header{padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #1e3a52;cursor:pointer;transition:background 0.2s;}
+  .category-header:hover{background:#0a1e33;}
+  .category-icon{font-size:18px;}
+  .category-name{color:#e2eaf4;font-size:14px;font-weight:700;flex:1;}
+  .category-count{background:#080f1a;color:#5a7a96;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;}
+  .category-toggle{color:#5a7a96;font-size:12px;transition:transform 0.2s;}
+  .category-body{padding:12px 16px;display:none;}
+  .category-body.open{display:block;}
+  .vuln-list{list-style:none;display:flex;flex-direction:column;gap:6px;}
+  .vuln-item{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#94a3b8;padding:6px 10px;border-radius:8px;transition:background 0.2s;cursor:default;}
+  .vuln-item:hover{background:#0a1e33;color:#e2eaf4;}
+  .vuln-dot{width:6px;height:6px;border-radius:50%;background:#00d4ff;margin-top:6px;flex-shrink:0;}
+  .vuln-dot.critical{background:#ef4444;}
+  .vuln-dot.high{background:#f59e0b;}
+  .vuln-dot.medium{background:#a78bfa;}
+  .vuln-dot.low{background:#10b981;}
+
+  /* Scan365 coverage tags */
+  .scanned-tag{margin-left:auto;font-size:10px;font-weight:700;border-radius:6px;padding:2px 7px;flex-shrink:0;}
+  .scanned-tag.free{background:#0a1e33;color:#00d4ff;border:1px solid #00d4ff;}
+  .scanned-tag.pro{background:#0a2018;color:#10b981;border:1px solid #10b981;}
+  .scanned-tag.soon{background:#2a1f0a;color:#f59e0b;border:1px solid #f59e0b;}
+
+  /* Frameworks */
+  .frameworks{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+  .framework-card{background:#132236;border:1px solid #1e3a52;border-radius:12px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;}
+  .framework-card .fw-icon{font-size:22px;flex-shrink:0;margin-top:2px;}
+  .fw-name{color:#fff;font-size:13px;font-weight:700;}
+  .fw-desc{color:#5a7a96;font-size:11px;margin-top:3px;}
+
+  /* Domain table */
+  .domain-table{width:100%;border-collapse:collapse;border-radius:12px;overflow:hidden;}
+  .domain-table th{background:#132236;color:#5a7a96;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;padding:12px 16px;text-align:left;}
+  .domain-table td{padding:12px 16px;border-top:1px solid #1e3a52;font-size:13px;color:#94a3b8;vertical-align:top;}
+  .domain-table tr:hover td{background:#0a1e33;}
+  .domain-table td:first-child{color:#fff;font-weight:700;white-space:nowrap;}
+  .domain-table td:first-child .td-icon{font-size:16px;margin-right:6px;}
+
+  /* CTA */
+  .cta-section{background:linear-gradient(135deg,#0a1e33,#0e2a4a);border:1px solid #1e3a52;border-radius:20px;padding:40px;text-align:center;margin-top:48px;}
+  .cta-section h2{color:#fff;font-size:24px;font-weight:800;margin-bottom:8px;}
+  .cta-section p{color:#5a7a96;font-size:14px;margin-bottom:28px;max-width:500px;margin-left:auto;margin-right:auto;}
+  .cta-buttons{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .btn-primary{background:linear-gradient(90deg,#00d4ff,#0066ff);color:#080f1a;border:none;border-radius:12px;padding:13px 28px;font-size:15px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-block;}
+  .btn-secondary{background:transparent;color:#e2eaf4;border:1px solid #1e3a52;border-radius:12px;padding:13px 28px;font-size:15px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block;transition:border-color 0.2s;}
+  .btn-secondary:hover{border-color:#00d4ff;color:#00d4ff;}
+
+  /* Footer */
+  footer{background:#0e1d2f;border-top:1px solid #1e3a52;padding:32px 24px;text-align:center;}
+  footer p{color:#5a7a96;font-size:13px;}
+  footer a{color:#00d4ff;text-decoration:none;}
+  .footer-links{display:flex;gap:20px;justify-content:center;margin-bottom:12px;flex-wrap:wrap;}
+
+  /* Responsive */
+  @media(max-width:768px){.layout{grid-template-columns:1fr;}.sidebar{position:static;}.hero-stats{gap:20px;}}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <a href="/Scan365/" class="nav-brand">
+    <svg class="nav-logo" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="sg1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#0066ff"/></linearGradient>
+        <linearGradient id="sg2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#0a1e33"/><stop offset="100%" stop-color="#0e2a4a"/></linearGradient>
+      </defs>
+      <path d="M30 3 L53 13 L53 33 Q53 47 30 57 Q7 47 7 33 L7 13 Z" fill="url(#sg1)"/>
+      <path d="M30 8 L49 17 L49 33 Q49 44 30 52 Q11 44 11 33 L11 17 Z" fill="url(#sg2)"/>
+      <ellipse cx="30" cy="37" rx="10" ry="8" fill="#00d4ff" opacity="0.9"/>
+      <circle cx="30" cy="27" r="7" fill="#00d4ff" opacity="0.9"/>
+      <rect x="22" y="21" width="16" height="5" rx="2.5" fill="#0055cc"/>
+      <rect x="20" y="23" width="20" height="2.5" rx="1.2" fill="#0066ff"/>
+      <rect x="27" y="33" width="6" height="6" rx="1.5" fill="#080f1a"/>
+      <circle cx="30" cy="36" r="2" fill="#00d4ff"/>
+      <circle cx="27" cy="26.5" r="1.2" fill="#080f1a"/>
+      <circle cx="33" cy="26.5" r="1.2" fill="#080f1a"/>
+    </svg>
+    <div>
+      <span class="nav-title">Scan365<span>.io</span></span>
+      <span class="nav-sub">BY IT SERVICE LINK</span>
+    </div>
+  </a>
+  <div class="nav-links">
+    <a href="/Scan365/">Home</a>
+    <a href="/Scan365/faq.html" style="color:#00d4ff;">FAQ</a>
+    <a href="/Scan365/pricing.html">Pricing</a>
+    <a href="mailto:admin@itsl.com.au">Contact</a>
+    <a href="/Scan365/" class="btn-signin">Start Free Scan</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="badge">🛡️ Security Knowledge Base</div>
+  <h1>Cybersecurity <span>FAQ</span><br/>and Vulnerability Guide</h1>
+  <p>A professional reference covering 13 vulnerability categories across Web, Cloud, Microsoft 365, Email, Infrastructure and more. Based on frameworks used by penetration testers and cloud security engineers.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">13</div><div class="hero-stat-label">Vulnerability Categories</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">100+</div><div class="hero-stat-label">Common Vulnerabilities</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">14</div><div class="hero-stat-label">Security Frameworks</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">Security Domains</div></div>
+  </div>
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="searchInput" placeholder="Search vulnerabilities, frameworks, categories..." onkeyup="searchFAQ()"/>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Domain quick cards -->
+  <div class="domains">
+    <a href="#web" class="domain-card"><div class="icon">🌐</div><div class="title">Web App</div><div class="count">10 categories · OWASP Top 10</div></a>
+    <a href="#cloud" class="domain-card"><div class="icon">☁️</div><div class="title">Cloud Platform</div><div class="count">6 categories · Azure AWS GCP</div></a>
+    <a href="#m365" class="domain-card"><div class="icon">🪟</div><div class="title">Microsoft 365</div><div class="count">7 categories · M365 Security</div></a>
+    <a href="#email" class="domain-card"><div class="icon">📧</div><div class="title">Email Security</div><div class="count">SPF DKIM DMARC BEC</div></a>
+    <a href="#dns" class="domain-card"><div class="icon">🌍</div><div class="title">DNS & Network</div><div class="count">Subdomain takeover TLS</div></a>
+    <a href="#frameworks" class="domain-card"><div class="icon">📋</div><div class="title">Frameworks</div><div class="count">OWASP NIST MITRE CIS</div></a>
+  </div>
+
+  <div class="layout">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-title">Jump to Section</div>
+      <div class="sidebar-nav">
+        <a class="sidebar-link active" href="#intro"><span class="icon">❓</span>Overview<span class="sidebar-badge">FAQ</span></a>
+        <div class="sidebar-divider"></div>
+        <a class="sidebar-link" href="#web"><span class="icon">🌐</span>Web Application<span class="sidebar-badge">Free</span></a>
+        <a class="sidebar-link" href="#cloud"><span class="icon">☁️</span>Cloud Platform<span class="sidebar-badge">Pro</span></a>
+        <a class="sidebar-link" href="#m365"><span class="icon">🪟</span>Microsoft 365<span class="sidebar-badge">Pro</span></a>
+        <a class="sidebar-link" href="#google"><span class="icon">🔵</span>Google Workspace<span class="sidebar-badge">Soon</span></a>
+        <a class="sidebar-link" href="#azure"><span class="icon">🔷</span>Azure Specific<span class="sidebar-badge">Pro</span></a>
+        <a class="sidebar-link" href="#aws"><span class="icon">🟠</span>AWS Specific<span class="sidebar-badge">Soon</span></a>
+        <a class="sidebar-link" href="#gcp"><span class="icon">🔴</span>Google Cloud<span class="sidebar-badge">Soon</span></a>
+        <a class="sidebar-link" href="#containers"><span class="icon">📦</span>Containers & K8s<span class="sidebar-badge">Pro</span></a>
+        <a class="sidebar-link" href="#dns"><span class="icon">🌍</span>DNS & Network<span class="sidebar-badge">Free</span></a>
+        <a class="sidebar-link" href="#email"><span class="icon">📧</span>Email Security<span class="sidebar-badge">Free</span></a>
+        <a class="sidebar-link" href="#mobile"><span class="icon">📱</span>Mobile Apps<span class="sidebar-badge">Soon</span></a>
+        <a class="sidebar-link" href="#infra"><span class="icon">🖥️</span>Infrastructure<span class="sidebar-badge">Pro</span></a>
+        <div class="sidebar-divider"></div>
+        <a class="sidebar-link" href="#frameworks"><span class="icon">📋</span>Frameworks<span class="sidebar-badge">Ref</span></a>
+        <a class="sidebar-link" href="#domains"><span class="icon">🎯</span>Security Domains<span class="sidebar-badge">Ref</span></a>
+      </div>
+
+      <div style="margin-top:24px;background:#0a1e33;border:1px solid #1e3a52;border-radius:14px;padding:16px;">
+        <div style="color:#00d4ff;font-size:12px;font-weight:700;margin-bottom:8px;">🔍 SCAN YOUR DOMAIN</div>
+        <div style="color:#5a7a96;font-size:12px;margin-bottom:12px;">Check your organisation against these vulnerabilities in 60 seconds.</div>
+        <a href="/Scan365/" style="display:block;background:linear-gradient(90deg,#00d4ff,#0066ff);color:#080f1a;border-radius:8px;padding:9px;text-align:center;font-weight:800;font-size:13px;text-decoration:none;">Start Free Scan →</a>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div id="faq-content">
+
+      <!-- Intro -->
+      <div class="section" id="intro">
+        <div class="section-header">
+          <div class="section-icon">❓</div>
+          <div><div class="section-title">Is Any Environment Completely Secure?</div><div class="section-sub">The most common question in cybersecurity</div></div>
+          <span class="section-badge">FAQ #1</span>
+        </div>
+        <div class="section-body">
+          <div class="intro-box">
+            <strong>No environment is completely free of vulnerabilities.</strong> The vulnerabilities differ depending on whether you are assessing a web application, cloud infrastructure, SaaS platform (such as Microsoft 365 or Google Workspace), identity systems, or APIs.<br/><br/>
+            Below is a professional classification similar to what is used by penetration testers, cloud security engineers, and security architects worldwide. Scan365.io automates the detection of many of these vulnerabilities for your organisation.
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+            <div style="background:#132236;border:1px solid #1e3a52;border-radius:10px;padding:14px;">
+              <div style="color:#00d4ff;font-size:20px;margin-bottom:6px;">🌐</div>
+              <div style="color:#fff;font-size:13px;font-weight:700;">Scan365 Free</div>
+              <div style="color:#5a7a96;font-size:12px;margin-top:4px;">Scans Web App and Email Security vulnerabilities automatically</div>
+            </div>
+            <div style="background:#132236;border:1px solid #10b981;border-radius:10px;padding:14px;">
+              <div style="color:#10b981;font-size:20px;margin-bottom:6px;">☁️</div>
+              <div style="color:#fff;font-size:13px;font-weight:700;">Scan365 Pro</div>
+              <div style="color:#5a7a96;font-size:12px;margin-top:4px;">Adds Microsoft 365, ACSC Essential Eight, Cloud and Infrastructure scanning</div>
+            </div>
+            <div style="background:#132236;border:1px solid #f59e0b;border-radius:10px;padding:14px;">
+              <div style="color:#f59e0b;font-size:20px;margin-bottom:6px;">🚀</div>
+              <div style="color:#fff;font-size:13px;font-weight:700;">Coming Soon</div>
+              <div style="color:#5a7a96;font-size:12px;margin-top:4px;">Google Workspace, AWS, GCP, Mobile App, and Container scanning</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1. Web Application -->
+      <div class="section" id="web">
+        <div class="section-header">
+          <div class="section-num">1</div>
+          <div class="section-icon">🌐</div>
+          <div><div class="section-title">Web Application Vulnerabilities</div><div class="section-sub">OWASP Top 10 + Common Issues · Scanned automatically in Free plan</div></div>
+          <span class="section-badge" style="background:#0a1e33;border-color:#00d4ff;color:#00d4ff;">FREE SCAN</span>
+        </div>
+        <div class="section-body">
+          <div class="intro-box">Scan365.io automatically detects many of these vulnerabilities during your <strong>Website and Domain scan</strong>. Results include SSL, headers, outdated software, and configuration issues.</div>
+          <div class="categories">
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">💉</span><span class="category-name">Injection</span><span class="category-count">9</span><span class="category-toggle">▼</span></div>
+              <div class="category-body open"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot critical"></span>SQL Injection (SQLi)<span class="scanned-tag free">Free</span></li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>NoSQL Injection</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>LDAP Injection</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>XPath Injection</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>OS Command Injection</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Server-Side Template Injection (SSTI)</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>XML Injection</li>
+                <li class="vuln-item"><span class="vuln-dot medium"></span>CRLF Injection</li>
+                <li class="vuln-item"><span class="vuln-dot medium"></span>Email Header Injection</li>
+              </ul></div>
+            </div>
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">📝</span><span class="category-name">Cross-Site Scripting (XSS)</span><span class="category-count">4</span><span class="category-toggle">▼</span></div>
+              <div class="category-body open"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Stored XSS<span class="scanned-tag free">Free</span></li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Reflected XSS</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>DOM-based XSS</li>
+                <li class="vuln-item"><span class="vuln-dot medium"></span>Mutation XSS</li>
+              </ul></div>
+            </div>
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">🔐</span><span class="category-name">Authentication</span><span class="category-count">8</span><span class="category-toggle">▼</span></div>
+              <div class="category-body open"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot high"></span>Weak passwords<span class="scanned-tag free">Free</span></li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Credential stuffing</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Password spraying</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Brute-force attacks</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Session fixation</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Session hijacking</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Broken MFA implementation</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Weak password reset process<span class="scanned-tag free">Free</span></li>
+              </ul></div>
+            </div>
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">🚫</span><span class="category-name">Authorization</span><span class="category-count">6</span><span class="category-toggle">▼</span></div>
+              <div class="category-body open"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Broken Access Control</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>IDOR (Insecure Direct Object References)</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Privilege escalation</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Horizontal privilege escalation</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Vertical privilege escalation</li>
+                <li class="vuln-item"><span class="vuln-dot medium"></span>Forced browsing</li>
+              </ul></div>
+            </div>
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">🍪</span><span class="category-name">Session Management</span><span class="category-count">6</span><span class="category-toggle">▼</span></div>
+              <div class="category-body"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot high"></span>Predictable session IDs</li>
+                <li class="vuln-item"><span class="vuln-dot medium"></span>Session timeout issues</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Missing Secure cookie<span class="scanned-tag free">Free</span></li>
+                <li class="vuln-item"><span class="vuln-dot medium"></span>Missing HttpOnly</li>
+                <li class="vuln-item"><span class="vuln-dot medium"></span>Missing SameSite</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Token leakage</li>
+              </ul></div>
+            </div>
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">🔒</span><span class="category-name">Cryptography</span><span class="category-count">7</span><span class="category-toggle">▼</span></div>
+              <div class="category-body"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Weak encryption</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Hardcoded secrets</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Weak TLS<span class="scanned-tag free">Free</span></li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Deprecated SSL<span class="scanned-tag free">Free</span></li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Missing HSTS<span class="scanned-tag free">Free</span></li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Poor key management</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Weak hashing (MD5, SHA-1)</li>
+              </ul></div>
+            </div>
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">📎</span><span class="category-name">File Upload</span><span class="category-count">5</span><span class="category-toggle">▼</span></div>
+              <div class="category-body"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Arbitrary file upload</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Malicious image upload</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Double extension upload</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>ZIP Slip</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Path traversal via uploads</li>
+              </ul></div>
+            </div>
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">🔌</span><span class="category-name">API Security</span><span class="category-count">7</span><span class="category-toggle">▼</span></div>
+              <div class="category-body"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Broken Object Level Authorization (BOLA)</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Broken Function Level Authorization</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Excessive Data Exposure</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Mass Assignment</li>
+                <li class="vuln-item"><span class="vuln-dot medium"></span>Rate limiting bypass<span class="scanned-tag free">Free</span></li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>API key exposure</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>JWT vulnerabilities</li>
+              </ul></div>
+            </div>
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">⚙️</span><span class="category-name">Server-Side</span><span class="category-count">7</span><span class="category-toggle">▼</span></div>
+              <div class="category-body"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot critical"></span>SSRF</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>XXE</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Deserialization</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Buffer Overflow</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Race Conditions</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>HTTP Request Smuggling</li>
+                <li class="vuln-item"><span class="vuln-dot medium"></span>HTTP Response Splitting</li>
+              </ul></div>
+            </div>
+            <div class="category">
+              <div class="category-header" onclick="toggle(this)"><span class="category-icon">💼</span><span class="category-name">Business Logic</span><span class="category-count">5</span><span class="category-toggle">▼</span></div>
+              <div class="category-body"><ul class="vuln-list">
+                <li class="vuln-item"><span class="vuln-dot medium"></span>Coupon abuse</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Price manipulation</li>
+                <li class="vuln-item"><span class="vuln-dot high"></span>Workflow bypass</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Account takeover</li>
+                <li class="vuln-item"><span class="vuln-dot critical"></span>Payment bypass</li>
+              </ul></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Cloud -->
+      <div class="section" id="cloud">
+        <div class="section-header">
+          <div class="section-num">2</div>
+          <div class="section-icon">☁️</div>
+          <div><div class="section-title">Cloud Platform Vulnerabilities</div><div class="section-sub">Azure · AWS · Google Cloud · Oracle Cloud · Alibaba Cloud</div></div>
+          <span class="section-badge">PRO SCAN</span>
+        </div>
+        <div class="section-body">
+          <div class="intro-box">Applicable to <strong>Azure, AWS, Google Cloud Platform, Oracle Cloud, and Alibaba Cloud</strong>. Scan365 Pro scans your Microsoft Azure configuration for these vulnerabilities.</div>
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">👤</span><span class="category-name">Identity</span><span class="category-count">6</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Excessive IAM permissions<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Privilege escalation</li><li class="vuln-item"><span class="vuln-dot high"></span>Inactive accounts<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Shared administrator accounts</li><li class="vuln-item"><span class="vuln-dot critical"></span>Missing MFA<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Stale credentials</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">💾</span><span class="category-name">Storage</span><span class="category-count">5</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Public storage buckets<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Public blobs</li><li class="vuln-item"><span class="vuln-dot high"></span>Exposed snapshots</li><li class="vuln-item"><span class="vuln-dot high"></span>Unencrypted storage</li><li class="vuln-item"><span class="vuln-dot high"></span>Backup exposure</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🌐</span><span class="category-name">Network</span><span class="category-count">7</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Open security groups</li><li class="vuln-item"><span class="vuln-dot critical"></span>Open firewall rules</li><li class="vuln-item"><span class="vuln-dot critical"></span>Exposed RDP (3389)</li><li class="vuln-item"><span class="vuln-dot high"></span>Exposed SSH (22)</li><li class="vuln-item"><span class="vuln-dot critical"></span>Open databases</li><li class="vuln-item"><span class="vuln-dot high"></span>Misconfigured VPN</li><li class="vuln-item"><span class="vuln-dot medium"></span>DNS exposure</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">⚡</span><span class="category-name">Compute</span><span class="category-count">5</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Unpatched virtual machines<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Container escape</li><li class="vuln-item"><span class="vuln-dot high"></span>Weak Kubernetes RBAC</li><li class="vuln-item"><span class="vuln-dot critical"></span>Docker daemon exposure</li><li class="vuln-item"><span class="vuln-dot high"></span>Insecure images</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🔑</span><span class="category-name">Secrets</span><span class="category-count">5</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Secrets in GitHub</li><li class="vuln-item"><span class="vuln-dot critical"></span>Secrets in source code</li><li class="vuln-item"><span class="vuln-dot critical"></span>Exposed API keys</li><li class="vuln-item"><span class="vuln-dot critical"></span>Exposed service principals</li><li class="vuln-item"><span class="vuln-dot critical"></span>Hardcoded passwords</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">👁️</span><span class="category-name">Monitoring</span><span class="category-count">5</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot high"></span>Missing logging<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Disabled audit logs<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Disabled Defender</li><li class="vuln-item"><span class="vuln-dot medium"></span>No SIEM integration</li><li class="vuln-item"><span class="vuln-dot high"></span>Missing alerting</li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. M365 -->
+      <div class="section" id="m365">
+        <div class="section-header">
+          <div class="section-num">3</div>
+          <div class="section-icon">🪟</div>
+          <div><div class="section-title">Microsoft 365 Security Vulnerabilities</div><div class="section-sub">Identity · Exchange · SharePoint · Teams · Entra ID · Defender</div></div>
+          <span class="section-badge">PRO SCAN</span>
+        </div>
+        <div class="section-body">
+          <div class="intro-box">Scan365 Pro performs a <strong>Microsoft 365 and Cloud audit</strong> checking these common attack vectors including identity, collaboration tools, and Defender configuration.</div>
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">👤</span><span class="category-name">Identity</span><span class="category-count">8</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>No MFA<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Weak Conditional Access<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Legacy Authentication enabled<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Password Hash Sync attacks</li><li class="vuln-item"><span class="vuln-dot critical"></span>Pass-the-Cookie</li><li class="vuln-item"><span class="vuln-dot high"></span>OAuth abuse</li><li class="vuln-item"><span class="vuln-dot critical"></span>Token theft</li><li class="vuln-item"><span class="vuln-dot high"></span>Guest account abuse<span class="scanned-tag pro">Pro</span></li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">📬</span><span class="category-name">Exchange Online</span><span class="category-count">5</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot high"></span>Mailbox forwarding<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Malicious inbox rules</li><li class="vuln-item"><span class="vuln-dot high"></span>Auto-forwarding to external users<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot medium"></span>SMTP relay abuse</li><li class="vuln-item"><span class="vuln-dot medium"></span>Shared mailbox abuse</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">📁</span><span class="category-name">SharePoint Online</span><span class="category-count">5</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot high"></span>Anonymous sharing<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Public links</li><li class="vuln-item"><span class="vuln-dot medium"></span>Oversharing</li><li class="vuln-item"><span class="vuln-dot high"></span>External sharing<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Sensitive document exposure</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">💬</span><span class="category-name">Microsoft Teams</span><span class="category-count">4</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot medium"></span>Guest abuse</li><li class="vuln-item"><span class="vuln-dot high"></span>Phishing</li><li class="vuln-item"><span class="vuln-dot medium"></span>External federation abuse</li><li class="vuln-item"><span class="vuln-dot high"></span>Malicious apps</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🆔</span><span class="category-name">Entra ID (Azure AD)</span><span class="category-count">6</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Weak Conditional Access<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Insecure app registrations</li><li class="vuln-item"><span class="vuln-dot critical"></span>Service Principal abuse</li><li class="vuln-item"><span class="vuln-dot high"></span>PIM not enabled<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Excessive Global Administrators<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Consent phishing</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🛡️</span><span class="category-name">Microsoft Defender</span><span class="category-count">4</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Safe Links disabled<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Safe Attachments disabled<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Anti-phishing disabled</li><li class="vuln-item"><span class="vuln-dot high"></span>Missing Attack Simulation Training</li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Google Workspace -->
+      <div class="section" id="google">
+        <div class="section-header">
+          <div class="section-num">4</div>
+          <div class="section-icon">🔵</div>
+          <div><div class="section-title">Google Workspace Vulnerabilities</div><div class="section-sub">Gmail · Drive · Cloud Identity · Google APIs</div></div>
+          <span class="section-badge" style="background:#2a1f0a;border-color:#f59e0b;color:#f59e0b;">COMING SOON</span>
+        </div>
+        <div class="section-body">
+          <div class="intro-box">Google Workspace scanning is on the <strong>Scan365 roadmap</strong>. Currently you can manually review these vulnerabilities against your Google Workspace environment.</div>
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">👤</span><span class="category-name">Identity</span><span class="category-count">5</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>No MFA<span class="scanned-tag soon">Soon</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Weak password policy</li><li class="vuln-item"><span class="vuln-dot high"></span>Third-party OAuth abuse</li><li class="vuln-item"><span class="vuln-dot medium"></span>Inactive users</li><li class="vuln-item"><span class="vuln-dot critical"></span>Admin privilege abuse</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">📧</span><span class="category-name">Gmail</span><span class="category-count">6</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Email spoofing<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>SPF misconfiguration<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>DKIM missing<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>DMARC missing<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Malicious forwarding rules</li><li class="vuln-item"><span class="vuln-dot high"></span>Phishing</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">📁</span><span class="category-name">Google Drive</span><span class="category-count">5</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot high"></span>Public sharing</li><li class="vuln-item"><span class="vuln-dot high"></span>External sharing</li><li class="vuln-item"><span class="vuln-dot critical"></span>Sensitive files</li><li class="vuln-item"><span class="vuln-dot medium"></span>Link sharing</li><li class="vuln-item"><span class="vuln-dot high"></span>Data leakage</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🔌</span><span class="category-name">Google APIs</span><span class="category-count">3</span><span class="category-toggle">▼</span></div><div class="category-body"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Exposed API Keys</li><li class="vuln-item"><span class="vuln-dot critical"></span>Service Account misuse</li><li class="vuln-item"><span class="vuln-dot high"></span>OAuth abuse</li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Azure -->
+      <div class="section" id="azure">
+        <div class="section-header">
+          <div class="section-num">5</div>
+          <div class="section-icon">🔷</div>
+          <div><div class="section-title">Azure-Specific Vulnerabilities</div><div class="section-sub">Storage · RBAC · Key Vault · AKS · Logic Apps · Conditional Access</div></div>
+          <span class="section-badge">PRO SCAN</span>
+        </div>
+        <div class="section-body">
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🔷</span><span class="category-name">Azure Vulnerabilities</span><span class="category-count">15</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list">
+              <li class="vuln-item"><span class="vuln-dot critical"></span>Public Blob Storage<span class="scanned-tag pro">Pro</span></li>
+              <li class="vuln-item"><span class="vuln-dot critical"></span>Overprivileged RBAC<span class="scanned-tag pro">Pro</span></li>
+              <li class="vuln-item"><span class="vuln-dot critical"></span>Azure Key Vault misconfiguration</li>
+              <li class="vuln-item"><span class="vuln-dot critical"></span>Managed Identity abuse</li>
+              <li class="vuln-item"><span class="vuln-dot high"></span>Azure Automation abuse</li>
+              <li class="vuln-item"><span class="vuln-dot high"></span>VM Managed Identity abuse</li>
+              <li class="vuln-item"><span class="vuln-dot critical"></span>Open NSGs<span class="scanned-tag pro">Pro</span></li>
+              <li class="vuln-item"><span class="vuln-dot high"></span>Open Load Balancers</li>
+              <li class="vuln-item"><span class="vuln-dot high"></span>Azure Functions exposure</li>
+              <li class="vuln-item"><span class="vuln-dot medium"></span>Logic App exposure</li>
+              <li class="vuln-item"><span class="vuln-dot critical"></span>Weak Conditional Access<span class="scanned-tag pro">Pro</span></li>
+              <li class="vuln-item"><span class="vuln-dot high"></span>PIM not enabled<span class="scanned-tag pro">Pro</span></li>
+              <li class="vuln-item"><span class="vuln-dot high"></span>Azure Arc misconfiguration</li>
+              <li class="vuln-item"><span class="vuln-dot high"></span>AKS misconfiguration</li>
+              <li class="vuln-item"><span class="vuln-dot critical"></span>Storage Account SAS token exposure</li>
+            </ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6 & 7. AWS & GCP -->
+      <div class="section" id="aws">
+        <div class="section-header">
+          <div class="section-num">6</div>
+          <div class="section-icon">🟠</div>
+          <div><div class="section-title">AWS & Google Cloud Vulnerabilities</div><div class="section-sub">S3 · IAM · Lambda · EC2 · Cloud Storage · Service Accounts</div></div>
+          <span class="section-badge" style="background:#2a1f0a;border-color:#f59e0b;color:#f59e0b;">COMING SOON</span>
+        </div>
+        <div class="section-body">
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🟠</span><span class="category-name">AWS Vulnerabilities</span><span class="category-count">10</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Public S3 buckets<span class="scanned-tag soon">Soon</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>IAM privilege escalation</li><li class="vuln-item"><span class="vuln-dot critical"></span>Lambda privilege escalation</li><li class="vuln-item"><span class="vuln-dot critical"></span>EC2 metadata attacks</li><li class="vuln-item"><span class="vuln-dot high"></span>EKS misconfiguration</li><li class="vuln-item"><span class="vuln-dot critical"></span>Security Group exposure</li><li class="vuln-item"><span class="vuln-dot critical"></span>Open RDS</li><li class="vuln-item"><span class="vuln-dot high"></span>Open Redis</li><li class="vuln-item"><span class="vuln-dot high"></span>CloudTrail disabled</li><li class="vuln-item"><span class="vuln-dot high"></span>Secrets Manager misconfiguration</li></ul></div></div>
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🔴</span><span class="category-name">Google Cloud Vulnerabilities</span><span class="category-count">8</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Public Cloud Storage buckets<span class="scanned-tag soon">Soon</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Excessive IAM permissions</li><li class="vuln-item"><span class="vuln-dot high"></span>Cloud Run exposure</li><li class="vuln-item"><span class="vuln-dot high"></span>Kubernetes RBAC issues</li><li class="vuln-item"><span class="vuln-dot critical"></span>Service Account abuse</li><li class="vuln-item"><span class="vuln-dot critical"></span>Metadata Server abuse</li><li class="vuln-item"><span class="vuln-dot critical"></span>Open Firewall Rules</li><li class="vuln-item"><span class="vuln-dot critical"></span>Secret Manager exposure</li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 8. Containers -->
+      <div class="section" id="containers">
+        <div class="section-header">
+          <div class="section-num">8</div>
+          <div class="section-icon">📦</div>
+          <div><div class="section-title">Container and Kubernetes Vulnerabilities</div><div class="section-sub">Docker · Kubernetes · AKS · EKS · GKE</div></div>
+          <span class="section-badge">PRO SCAN</span>
+        </div>
+        <div class="section-body">
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">📦</span><span class="category-name">Container and K8s Issues</span><span class="category-count">11</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Container escape</li><li class="vuln-item"><span class="vuln-dot critical"></span>Privileged containers<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Host networking</li><li class="vuln-item"><span class="vuln-dot high"></span>Root containers</li><li class="vuln-item"><span class="vuln-dot high"></span>Insecure images<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Secrets in images</li><li class="vuln-item"><span class="vuln-dot critical"></span>Kubernetes Dashboard exposure</li><li class="vuln-item"><span class="vuln-dot critical"></span>etcd exposure</li><li class="vuln-item"><span class="vuln-dot critical"></span>Weak RBAC<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Admission controller disabled</li><li class="vuln-item"><span class="vuln-dot high"></span>Pod Security Standards not enforced</li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 9. DNS -->
+      <div class="section" id="dns">
+        <div class="section-header">
+          <div class="section-num">9</div>
+          <div class="section-icon">🌍</div>
+          <div><div class="section-title">DNS and Network Vulnerabilities</div><div class="section-sub">Takeover · TLS · Certificates · Zone Transfer</div></div>
+          <span class="section-badge" style="background:#0a1e33;border-color:#00d4ff;color:#00d4ff;">FREE SCAN</span>
+        </div>
+        <div class="section-body">
+          <div class="intro-box">Scan365 <strong>Free plan</strong> automatically checks your domain for DNS takeover risk, TLS configuration, HSTS and certificate issues.</div>
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🌍</span><span class="category-name">DNS and Network Issues</span><span class="category-count">9</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>DNS takeover<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Subdomain takeover<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Open DNS resolver</li><li class="vuln-item"><span class="vuln-dot critical"></span>Zone transfer</li><li class="vuln-item"><span class="vuln-dot high"></span>DNS cache poisoning</li><li class="vuln-item"><span class="vuln-dot critical"></span>Weak TLS configuration<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Missing HSTS<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Weak ciphers<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Certificate issues<span class="scanned-tag free">Free</span></li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 10. Email -->
+      <div class="section" id="email">
+        <div class="section-header">
+          <div class="section-num">10</div>
+          <div class="section-icon">📧</div>
+          <div><div class="section-title">Email Security Vulnerabilities</div><div class="section-sub">SPF · DKIM · DMARC · BEC · Phishing</div></div>
+          <span class="section-badge" style="background:#0a1e33;border-color:#00d4ff;color:#00d4ff;">FREE SCAN</span>
+        </div>
+        <div class="section-body">
+          <div class="intro-box">Scan365 <strong>Phishing Risk Score module</strong> (Free plan) checks all email authentication records including SPF, DKIM, DMARC and identifies email spoofing vulnerabilities.</div>
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">📧</span><span class="category-name">Email Security Issues</span><span class="category-count">8</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>SPF missing<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>DKIM missing<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>DMARC missing<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Open relay</li><li class="vuln-item"><span class="vuln-dot critical"></span>Email spoofing<span class="scanned-tag free">Free</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Business Email Compromise (BEC)</li><li class="vuln-item"><span class="vuln-dot high"></span>Mailbox forwarding abuse</li><li class="vuln-item"><span class="vuln-dot high"></span>QR-code phishing (Quishing)</li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 11. Mobile -->
+      <div class="section" id="mobile">
+        <div class="section-header">
+          <div class="section-num">11</div>
+          <div class="section-icon">📱</div>
+          <div><div class="section-title">Mobile Application Vulnerabilities</div><div class="section-sub">iOS · Android · OWASP Mobile Top 10</div></div>
+          <span class="section-badge" style="background:#2a1f0a;border-color:#f59e0b;color:#f59e0b;">COMING SOON</span>
+        </div>
+        <div class="section-body">
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">📱</span><span class="category-name">Mobile App Issues</span><span class="category-count">8</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Insecure storage<span class="scanned-tag soon">Soon</span></li><li class="vuln-item"><span class="vuln-dot high"></span>Root detection bypass</li><li class="vuln-item"><span class="vuln-dot high"></span>Certificate pinning bypass</li><li class="vuln-item"><span class="vuln-dot critical"></span>Weak encryption</li><li class="vuln-item"><span class="vuln-dot critical"></span>API exposure</li><li class="vuln-item"><span class="vuln-dot critical"></span>Hardcoded credentials</li><li class="vuln-item"><span class="vuln-dot high"></span>Reverse engineering</li><li class="vuln-item"><span class="vuln-dot high"></span>Insecure local database</li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 12. Infrastructure -->
+      <div class="section" id="infra">
+        <div class="section-header">
+          <div class="section-num">12</div>
+          <div class="section-icon">🖥️</div>
+          <div><div class="section-title">Infrastructure Vulnerabilities</div><div class="section-sub">Patching · RDP · SSH · SMB · Default credentials</div></div>
+          <span class="section-badge">PRO SCAN</span>
+        </div>
+        <div class="section-body">
+          <div class="categories">
+            <div class="category"><div class="category-header" onclick="toggle(this)"><span class="category-icon">🖥️</span><span class="category-name">Infrastructure Issues</span><span class="category-count">10</span><span class="category-toggle">▼</span></div><div class="category-body open"><ul class="vuln-list"><li class="vuln-item"><span class="vuln-dot critical"></span>Missing security patches<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Unsupported operating systems<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot critical"></span>Weak administrator passwords</li><li class="vuln-item"><span class="vuln-dot critical"></span>SMB vulnerabilities</li><li class="vuln-item"><span class="vuln-dot critical"></span>RDP exposure<span class="scanned-tag pro">Pro</span></li><li class="vuln-item"><span class="vuln-dot high"></span>SSH misconfiguration</li><li class="vuln-item"><span class="vuln-dot critical"></span>Default credentials</li><li class="vuln-item"><span class="vuln-dot medium"></span>SNMP exposure</li><li class="vuln-item"><span class="vuln-dot high"></span>FTP/Telnet enabled</li><li class="vuln-item"><span class="vuln-dot high"></span>NFS exposure</li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 13. Frameworks -->
+      <div class="section" id="frameworks">
+        <div class="section-header">
+          <div class="section-num">13</div>
+          <div class="section-icon">📋</div>
+          <div><div class="section-title">Common Vulnerability Frameworks</div><div class="section-sub">OWASP · MITRE · NIST · CIS · Microsoft · AWS · Google</div></div>
+          <span class="section-badge" style="background:#0a1e33;border-color:#00d4ff;color:#00d4ff;">REFERENCE</span>
+        </div>
+        <div class="section-body">
+          <div class="intro-box">Security professionals assess against these globally recognised frameworks. <strong>Scan365 Pro reports reference OWASP, ACSC Essential Eight, NIST and CIS benchmarks</strong> in every scan.</div>
+          <div class="frameworks">
+            <div class="framework-card"><div class="fw-icon">🌐</div><div><div class="fw-name">OWASP Top 10</div><div class="fw-desc">Web Application security risks</div></div></div>
+            <div class="framework-card"><div class="fw-icon">🔌</div><div><div class="fw-name">OWASP API Security Top 10</div><div class="fw-desc">API-specific vulnerabilities</div></div></div>
+            <div class="framework-card"><div class="fw-icon">📱</div><div><div class="fw-name">OWASP Mobile Top 10</div><div class="fw-desc">Mobile application risks</div></div></div>
+            <div class="framework-card"><div class="fw-icon">⚔️</div><div><div class="fw-name">MITRE ATT&CK</div><div class="fw-desc">Adversary tactics and techniques</div></div></div>
+            <div class="framework-card"><div class="fw-icon">🗺️</div><div><div class="fw-name">MITRE CAPEC</div><div class="fw-desc">Common attack pattern enumeration</div></div></div>
+            <div class="framework-card"><div class="fw-icon">📝</div><div><div class="fw-name">MITRE CWE</div><div class="fw-desc">Common weakness enumeration</div></div></div>
+            <div class="framework-card"><div class="fw-icon">🔍</div><div><div class="fw-name">CVE</div><div class="fw-desc">Common Vulnerabilities and Exposures</div></div></div>
+            <div class="framework-card"><div class="fw-icon">📏</div><div><div class="fw-name">CIS Benchmarks</div><div class="fw-desc">Security configuration standards</div></div></div>
+            <div class="framework-card"><div class="fw-icon">🏛️</div><div><div class="fw-name">NIST CSF</div><div class="fw-desc">Cybersecurity Framework</div></div></div>
+            <div class="framework-card"><div class="fw-icon">📖</div><div><div class="fw-name">NIST SP 800-53</div><div class="fw-desc">Security and privacy controls</div></div></div>
+            <div class="framework-card"><div class="fw-icon">🚨</div><div><div class="fw-name">NIST SP 800-61</div><div class="fw-desc">Incident Response</div></div></div>
+            <div class="framework-card"><div class="fw-icon">🟦</div><div><div class="fw-name">Microsoft Security Benchmark</div><div class="fw-desc">Azure security baseline</div></div></div>
+            <div class="framework-card"><div class="fw-icon">🟠</div><div><div class="fw-name">AWS Well-Architected</div><div class="fw-desc">Security Pillar framework</div></div></div>
+            <div class="framework-card"><div class="fw-icon">🔴</div><div><div class="fw-name">Google Cloud Security</div><div class="fw-desc">Security Foundations framework</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Domain methodology -->
+      <div class="section" id="domains">
+        <div class="section-header">
+          <div class="section-icon">🎯</div>
+          <div><div class="section-title">Six Security Domain Methodology</div><div class="section-sub">Enterprise security assessment framework for Microsoft Azure, M365, AWS and Google Cloud</div></div>
+        </div>
+        <div class="section-body">
+          <div class="intro-box">For organisations with Microsoft infrastructure, Azure, Microsoft 365 and cloud engineering, a practical approach is to organise assessments into <strong>six security domains</strong>. Scan365.io maps its scan results to these domains.</div>
+          <table class="domain-table">
+            <thead><tr><th>Domain</th><th>Examples</th><th>Scan365 Coverage</th></tr></thead>
+            <tbody>
+              <tr><td><span class="td-icon">🔐</span>Identity and Access</td><td>MFA, Conditional Access, RBAC, Privileged Identity Management, OAuth, service accounts</td><td><span class="scanned-tag pro" style="display:inline-block;">Pro</span></td></tr>
+              <tr><td><span class="td-icon">🌐</span>Network</td><td>Firewalls, NSGs, VPNs, WAFs, segmentation, DDoS protections</td><td><span class="scanned-tag free" style="display:inline-block;">Free</span> <span class="scanned-tag pro" style="display:inline-block;">Pro</span></td></tr>
+              <tr><td><span class="td-icon">🔒</span>Data Protection</td><td>Encryption, Key Vault, DLP, information protection, backup security</td><td><span class="scanned-tag pro" style="display:inline-block;">Pro</span></td></tr>
+              <tr><td><span class="td-icon">⚡</span>Compute and Applications</td><td>Virtual machines, containers, Kubernetes, serverless functions, web applications, APIs</td><td><span class="scanned-tag free" style="display:inline-block;">Free</span> <span class="scanned-tag pro" style="display:inline-block;">Pro</span></td></tr>
+              <tr><td><span class="td-icon">👁️</span>Monitoring and Detection</td><td>SIEM, audit logging, Microsoft Defender, Google Security Center, CloudTrail, alerting</td><td><span class="scanned-tag pro" style="display:inline-block;">Pro</span></td></tr>
+              <tr><td><span class="td-icon">📋</span>Governance and Compliance</td><td>CIS Benchmarks, NIST, ISO 27001, policy enforcement, vulnerability management</td><td><span class="scanned-tag pro" style="display:inline-block;">Pro</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <div class="cta-section">
+        <h2>Ready to Scan Your Organisation?</h2>
+        <p>Scan365.io automatically checks your website and Microsoft 365 environment against these vulnerabilities in 60 seconds. No technical knowledge required.</p>
+        <div class="cta-buttons">
+          <a href="/Scan365/" class="btn-primary">🔍 Start Free Scan</a>
+          <a href="mailto:admin@itsl.com.au?subject=Scan365 Pro Enquiry" class="btn-secondary">💼 Talk to Sales</a>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+          <span style="color:#5a7a96;font-size:13px;">✓ No credit card required</span>
+          <span style="color:#5a7a96;font-size:13px;">✓ Results in 60 seconds</span>
+          <span style="color:#5a7a96;font-size:13px;">✓ Free PDF report</span>
+          <span style="color:#5a7a96;font-size:13px;">✓ ITSL backed</span>
+        </div>
+      </div>
+
+    </div><!-- end faq-content -->
+  </div><!-- end layout -->
+</div><!-- end container -->
+
+<footer>
+  <div class="footer-links">
+    <a href="/Scan365/">Home</a>
+    <a href="/Scan365/pricing.html">Pricing</a>
+    <a href="/Scan365/terms.html">Terms of Service</a>
+    <a href="/Scan365/privacy.html">Privacy Policy</a>
+    <a href="/Scan365/refunds.html">Refund Policy</a>
+    <a href="mailto:admin@itsl.com.au">Contact</a>
+  </div>
+  <p>© 2026 IT Service Link | ABN 78 336 526 604 | Sydney NSW Australia | <a href="mailto:admin@itsl.com.au">admin@itsl.com.au</a></p>
+</footer>
+
+<script>
+function toggle(header){
+  const body=header.nextElementSibling;
+  const arrow=header.querySelector('.category-toggle');
+  const isOpen=body.classList.contains('open');
+  body.classList.toggle('open',!isOpen);
+  arrow.textContent=isOpen?'▼':'▲';
+}
+
+function searchFAQ(){
+  const q=document.getElementById('searchInput').value.toLowerCase();
+  if(!q){document.querySelectorAll('.vuln-item').forEach(i=>i.style.display='flex');document.querySelectorAll('.section').forEach(s=>s.style.display='block');return;}
+  document.querySelectorAll('.vuln-item').forEach(item=>{
+    const text=item.textContent.toLowerCase();
+    item.style.display=text.includes(q)?'flex':'none';
+  });
+  document.querySelectorAll('.category-body').forEach(b=>b.classList.add('open'));
+  document.querySelectorAll('.section').forEach(section=>{
+    const visible=[...section.querySelectorAll('.vuln-item')].some(i=>i.style.display!=='none');
+    const headerMatch=section.querySelector('.section-title')?.textContent.toLowerCase().includes(q);
+    section.style.display=(visible||headerMatch)?'block':'none';
+  });
+}
+
+// Sidebar active state
+document.querySelectorAll('.sidebar-link').forEach(link=>{
+  link.addEventListener('click',function(){
+    document.querySelectorAll('.sidebar-link').forEach(l=>l.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+// Intersection observer for sidebar
+const observer=new IntersectionObserver(entries=>{
+  entries.forEach(entry=>{
+    if(entry.isIntersecting){
+      const id=entry.target.id;
+      document.querySelectorAll('.sidebar-link').forEach(l=>l.classList.remove('active'));
+      const active=document.querySelector(`.sidebar-link[href="#${id}"]`);
+      if(active)active.classList.add('active');
+    }
+  });
+},{threshold:0.3});
+document.querySelectorAll('.section[id]').forEach(s=>observer.observe(s));
+</script>
+</body>
+</html>

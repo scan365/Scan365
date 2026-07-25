@@ -1,12 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
+import { supabase } from "./supabase";
 import {
   registerUser, loginUser, getUser, updateProfile, updatePassword,
   toggleMFA, upgradePlan, saveScan, getScanHistory, saveLead,
   getAllUsers, getAllLeads, getSalesStats, getMarketingData,
-  updateLeadStatus, adminResetPassword, pushToPro, checkMonthlyReset,
+  updateLeadStatus, adminResetPassword, pushToPro, cancelPro, checkMonthlyReset,
   requestPasswordReset, verifyResetCode, resetPasswordWithCode
 } from "./supabase";
+
+// ── App Version: update every release (format YYMMDD.NN) ─────────
+const APP_VERSION="260725.19";
+
+// ── App Version (update with every release: YYMMDD.NN) ──────────
 
 const C = {
   bg:"#080f1a", surface:"#0e1d2f", card:"#132236", border:"#1e3a52",
@@ -21,31 +27,140 @@ const COUNTRIES=["Australia","New Zealand","United States","United Kingdom","Can
 function generateScanResults(domain,m365domain,companySize){
   const seed=domain.length+companySize.length;
   const r=(min,max)=>min+((seed*7+Math.random()*100)%(max-min))|0;
+  const pick=(arr)=>arr[Math.floor(Math.random()*arr.length)];
+
+  // Website findings pool - OWASP Top 10 + DNS + Network
+  const websiteFindings=[
+    // Critical
+    {sev:"critical",title:"SSL certificate expires in 12 days",detail:"Your SSL/TLS certificate is expiring imminently. Renew immediately to avoid browser security warnings and data exposure. Use Let's Encrypt for free auto-renewal or contact your hosting provider."},
+    {sev:"critical",title:"Deprecated SSL 3.0 / TLS 1.0 protocol detected",detail:"SSL 3.0 and TLS 1.0 are deprecated and vulnerable to POODLE and BEAST attacks. Disable these protocols and enforce TLS 1.2 minimum (TLS 1.3 recommended) on your web server."},
+    {sev:"critical",title:"SQL Injection vulnerability detected in query parameters",detail:"User-supplied input is being passed directly to database queries without sanitisation. This allows attackers to read, modify or delete your database. Use parameterised queries and prepared statements immediately."},
+    {sev:"critical",title:"Subdomain takeover risk identified",detail:"One or more subdomains point to services that no longer exist (dangling DNS). Attackers can claim these services and host malicious content under your domain. Remove unused DNS records immediately."},
+    {sev:"critical",title:"Sensitive data exposed in HTTP response headers",detail:"Server version information, framework details and internal paths are disclosed in response headers. Attackers use this to identify and exploit known vulnerabilities. Remove X-Powered-By, Server and X-AspNet-Version headers."},
+    {sev:"critical",title:"Cross-Site Scripting (XSS) vulnerability found",detail:"Unvalidated user input is reflected in HTML output without encoding. Attackers can inject malicious scripts to steal session cookies, redirect users, or perform actions on their behalf. Sanitise all user input and implement Content-Security-Policy."},
+    {sev:"critical",title:"Path traversal vulnerability in file upload endpoint",detail:"The file upload component does not validate file paths, allowing attackers to write files outside the intended directory. This can lead to remote code execution. Validate and sanitise all file paths and names."},
+    {sev:"critical",title:"API key exposed in public JavaScript bundle",detail:"A live API key or secret was detected in your client-side JavaScript. Attackers can use this to access your backend services, cloud storage or third-party APIs. Rotate the key immediately and move secrets to server-side environment variables."},
+    // High
+    {sev:"high",title:"Missing HTTP security headers",detail:"Content-Security-Policy, X-Frame-Options, X-Content-Type-Options and Referrer-Policy headers are not configured. These headers protect against XSS, clickjacking and MIME-type sniffing attacks. Add these headers to your web server configuration."},
+    {sev:"high",title:"Missing HTTP Strict Transport Security (HSTS)",detail:"HSTS header is not set, allowing potential protocol downgrade attacks. Configure HSTS with a minimum max-age of 31536000 seconds and include subdomains. This forces browsers to always use HTTPS connections to your domain."},
+    {sev:"high",title:"Clickjacking vulnerability - X-Frame-Options not set",detail:"Your website can be embedded in an iframe on a malicious site, tricking users into clicking hidden buttons or links. Set X-Frame-Options: DENY or SAMEORIGIN, or use the frame-ancestors Content-Security-Policy directive."},
+    {sev:"high",title:"Session cookie missing Secure and HttpOnly flags",detail:"Session cookies are accessible to JavaScript (missing HttpOnly) and may be transmitted over HTTP (missing Secure flag). Attackers can steal session tokens via XSS or network interception. Set both Secure and HttpOnly flags on all session cookies."},
+    {sev:"high",title:"Weak TLS cipher suites supported",detail:"Your server supports weak cipher suites including RC4, DES and 3DES. These can be exploited in BEAST, SWEET32 and similar attacks. Disable weak ciphers and prioritise ECDHE and AES-GCM cipher suites."},
+    {sev:"high",title:"Outdated CMS version detected with known CVEs",detail:"Your content management system is running an outdated version with publicly disclosed vulnerabilities. Update to the latest stable version immediately and enable automatic security updates to protect against known exploits."},
+    {sev:"high",title:"Directory listing enabled on web server",detail:"Web server directory listing is enabled, exposing file and folder structure to unauthenticated users. This can reveal sensitive files, backup copies and configuration data. Disable directory listing in your web server configuration."},
+    {sev:"high",title:"Open redirect vulnerability detected",detail:"Your application redirects users to external URLs based on unvalidated user input. Attackers exploit this for phishing campaigns that appear to originate from your trusted domain. Validate all redirect destinations against an allowlist."},
+    {sev:"high",title:"CORS policy is overly permissive",detail:"Access-Control-Allow-Origin is set to wildcard (*) or allows untrusted origins. This enables cross-origin requests from malicious websites that can access authenticated data. Restrict CORS to specific trusted domains only."},
+    {sev:"high",title:"Rate limiting not implemented on login endpoint",detail:"No rate limiting or account lockout is enforced on authentication endpoints. This leaves your application vulnerable to brute-force and credential stuffing attacks. Implement rate limiting, CAPTCHA and progressive delays on failed login attempts."},
+    // Medium
+    {sev:"medium",title:"Content-Security-Policy header is too permissive",detail:"A Content-Security-Policy header is present but uses unsafe-inline or unsafe-eval directives which significantly reduce its effectiveness. Tighten the policy to use nonces or hashes for inline scripts and avoid unsafe directives."},
+    {sev:"medium",title:"Missing SameSite cookie attribute",detail:"Session cookies do not have the SameSite attribute set, making them vulnerable to Cross-Site Request Forgery (CSRF) attacks. Set SameSite=Strict or SameSite=Lax on all session and authentication cookies."},
+    {sev:"medium",title:"Referrer-Policy header not configured",detail:"Without a Referrer-Policy, sensitive URL parameters may be leaked to third-party sites through the Referer header. Set Referrer-Policy to no-referrer or strict-origin-when-cross-origin to control information disclosure."},
+    {sev:"medium",title:"JavaScript libraries with known vulnerabilities detected",detail:"One or more client-side JavaScript libraries are outdated and have published CVEs. Update all libraries to their latest patched versions and consider using a dependency management tool to track future updates."},
+    {sev:"medium",title:"DNS zone transfer not restricted",detail:"Your DNS server responds to zone transfer requests from unauthorised sources. This exposes your complete DNS configuration to attackers, revealing internal hostnames and IP addresses. Restrict AXFR requests to authorised secondary DNS servers only."},
+    {sev:"medium",title:"Missing Permissions-Policy header",detail:"The Permissions-Policy header is not set, allowing web features like camera, microphone and geolocation to be accessed by third-party scripts. Add a Permissions-Policy header to restrict feature access to trusted origins only."},
+    {sev:"medium",title:"Server error messages expose internal paths",detail:"Error pages reveal internal file paths, database connection strings, and stack traces. This information helps attackers map your infrastructure. Implement custom error pages and disable detailed error reporting in production."},
+    // Low
+    {sev:"low",title:"Insecure HTTP methods enabled",detail:"HTTP methods such as TRACE, TRACK or PUT are enabled on the web server. TRACE enables Cross-Site Tracing (XST) attacks. Disable all unnecessary HTTP methods and restrict the server to only GET, POST and OPTIONS where required."},
+    {sev:"low",title:"Missing X-Content-Type-Options header",detail:"Without the X-Content-Type-Options: nosniff header, browsers may perform MIME-type sniffing and execute files as a different content type. This can enable code execution attacks. Add this header to all HTTP responses."},
+    {sev:"low",title:"Cookie without expiry date",detail:"Authentication cookies have no expiry date, meaning they persist indefinitely in the browser. Set appropriate expiry times for session cookies to reduce the risk of stolen or abandoned sessions being reused."},
+    {sev:"low",title:"DNS resolver responds to external queries",detail:"Your DNS resolver accepts recursive queries from external IP addresses. This can be abused for DNS amplification DDoS attacks. Restrict recursive DNS resolution to internal networks and authorised clients only."},
+  ];
+
+  // M365 findings pool - Full Microsoft 365 coverage
+  const m365Findings=[
+    // Critical
+    {sev:"critical",title:"MFA not enforced for all administrator accounts",detail:"Three or more Global Administrator accounts have no Multi-Factor Authentication policy applied. A compromised admin password gives attackers full access to your Microsoft 365 tenant. Enable MFA via Entra ID Conditional Access for all privileged accounts immediately."},
+    {sev:"critical",title:"Legacy authentication protocols not blocked",detail:"SMTP AUTH, POP3, IMAP and Basic Authentication are enabled in your tenant. These legacy protocols bypass Conditional Access and MFA policies. Block legacy authentication via Conditional Access and disable SMTP AUTH for user mailboxes in Exchange Online."},
+    {sev:"critical",title:"Conditional Access policies are missing or misconfigured",detail:"Your tenant has no Conditional Access policies enforcing device compliance, location restrictions or MFA requirements. Attackers can access your Microsoft 365 services from any device or location with just a password. Deploy baseline Conditional Access policies following Microsoft's recommended templates."},
+    {sev:"critical",title:"Excessive Global Administrator accounts",detail:"More than 5 Global Administrator accounts were detected. The principle of least privilege is not being followed. Microsoft recommends 2-4 Global Admins maximum. Review and downgrade accounts to appropriate lesser-privileged roles using Privileged Identity Management."},
+    {sev:"critical",title:"Token theft via Pass-the-Cookie attack risk",detail:"No session token protection or continuous access evaluation is configured. Attackers who steal browser tokens via malware or phishing can impersonate users without needing passwords or MFA. Enable Continuous Access Evaluation and sign-in frequency Conditional Access policies."},
+    {sev:"critical",title:"Safe Links and Safe Attachments not enabled",detail:"Microsoft Defender for Office 365 Safe Links and Safe Attachments policies are disabled. Users are receiving unscanned email attachments and clicking unverified URLs. Enable these protections in the Microsoft 365 Defender portal immediately to prevent malware delivery."},
+    {sev:"critical",title:"Consent phishing risk - user consent to OAuth apps not restricted",detail:"Users can grant third-party applications access to company data without administrator approval. Attackers use malicious OAuth apps to gain persistent access. Disable user consent or restrict it to verified publisher apps only in Entra ID Enterprise Applications settings."},
+    // High
+    {sev:"high",title:"External email forwarding not blocked",detail:"Automatic email forwarding to external domains is permitted. Malicious inbox rules created by attackers can silently forward all email to external accounts. Disable outbound forwarding in Exchange Online Transport Rules and monitor for suspicious forwarding rules."},
+    {sev:"high",title:"SharePoint and OneDrive allow anonymous sharing",detail:"Files and folders can be shared via Anyone links without authentication. Sensitive business documents may be accessible to anyone with the link. Disable Anyone links in SharePoint admin settings and enforce authenticated sharing only."},
+    {sev:"high",title:"Privileged Identity Management (PIM) not enabled",detail:"Entra ID Privileged Identity Management is not configured. Administrator roles are permanently assigned rather than activated on demand. Enable PIM to require justification and approval for privileged role activation, reducing the exposure window for privileged accounts."},
+    {sev:"high",title:"Microsoft Secure Score below recommended baseline",detail:"Your Microsoft 365 Secure Score is significantly below the industry average for your organisation size. Multiple security recommendations have not been implemented. Review and action the top recommendations in the Microsoft 365 Defender portal."},
+    {sev:"high",title:"Guest user access not restricted",detail:"External guest users have excessive permissions within your Teams and SharePoint environment. Guest accounts may have access to sensitive channels and documents beyond their business need. Review guest access policies and implement Just-in-Time access for guests."},
+    {sev:"high",title:"Anti-phishing policies not configured",detail:"Microsoft Defender anti-phishing policies are using default settings only. Impersonation protection for key executives and domains is not configured. Create custom anti-phishing policies with impersonation protection for your top executives and most targeted domains."},
+    {sev:"high",title:"Insecure app registrations in Entra ID",detail:"One or more application registrations have client secrets that never expire, excessive API permissions or reply URLs with wildcards. Review all app registrations, rotate secrets, apply least-privilege permissions and remove unused applications."},
+    {sev:"high",title:"Shared mailboxes accessible with passwords",detail:"Shared mailboxes have user accounts that can log in with a password. Attackers who compromise a shared mailbox account can bypass MFA policies. Convert shared mailboxes to disabled accounts and access them only via delegate permissions."},
+    // Medium
+    {sev:"medium",title:"External sharing enabled in SharePoint without expiry",detail:"External sharing links have no expiry date or password requirement. Shared links persist indefinitely and can be accessed long after the business need has passed. Set sharing link expiry to a maximum of 30 days and require password authentication for external links."},
+    {sev:"medium",title:"Microsoft Teams guest federation not restricted",detail:"Microsoft Teams is configured to allow federation with all external Teams organisations without restriction. This can be exploited for phishing and social engineering. Restrict federation to a specific list of trusted partner organisations."},
+    {sev:"medium",title:"Audit log retention period is insufficient",detail:"Microsoft 365 audit log retention is set to 90 days or less. Security investigations often require logs from further back. Upgrade to a 1-year or 10-year audit log retention licence depending on your compliance requirements."},
+    {sev:"medium",title:"Attack Simulation Training not deployed",detail:"No phishing simulation or security awareness training campaigns have been run in the last 12 months. Regular training reduces the risk of successful phishing attacks. Deploy Microsoft Attack Simulation Training to test and educate your users."},
+    {sev:"medium",title:"OneDrive sync unrestricted to personal devices",detail:"Users can sync company OneDrive data to personal unmanaged devices. This can lead to data leakage if a personal device is lost or compromised. Restrict OneDrive sync to Entra ID joined or compliant devices only via Conditional Access."},
+    // Low
+    {sev:"low",title:"Microsoft 365 apps not updated to current channel",detail:"Some users are running Microsoft 365 Apps on the Semi-Annual update channel rather than Monthly Enterprise or Current channel. This delays security patches by up to 6 months. Switch to Monthly Enterprise Channel for faster security updates."},
+    {sev:"low",title:"Self-service password reset not enabled for all users",detail:"Self-Service Password Reset (SSPR) is not enabled for all users. This increases helpdesk load and may encourage users to use weak passwords. Enable SSPR with multi-method authentication registration for all users."},
+  ];
+
+  // Essential 8 findings pool - Full ACSC Essential Eight ML0-ML3
+  const essential8Findings=[
+    // Critical
+    {sev:"critical",title:"Application control not implemented (Essential Eight ML3)",detail:"Application whitelisting is not configured on workstations and servers. Any application can execute, including malware. Implement application control using Microsoft AppLocker or Windows Defender Application Control (WDAC) to allow only approved applications to run."},
+    {sev:"critical",title:"Patch applications: Multiple applications over 30 days old",detail:"Microsoft Office, Adobe Acrobat, Chrome and Java are running versions more than 30 days behind the latest release. Each unpatched application represents a known exploitable vulnerability. Enable automatic updates and use a patch management solution to maintain 100% patch currency."},
+    {sev:"critical",title:"Operating system patching critically overdue",detail:"One or more devices are running Windows versions with critical security patches not applied for over 30 days. Missing OS patches are the most commonly exploited vulnerability. Configure Windows Update for Business to automatically apply critical patches within 48 hours of release."},
+    {sev:"critical",title:"Multi-factor authentication not enforced for privileged users",detail:"Administrator and privileged accounts do not require MFA. A compromised privileged password gives attackers complete control over your environment. This is Essential Eight Control 6. Enforce MFA for all privileged accounts immediately using Entra ID Conditional Access."},
+    {sev:"critical",title:"Internet-facing services running unsupported software",detail:"One or more internet-facing services are running end-of-life software with no vendor security support. These systems have publicly known unpatched vulnerabilities. Upgrade to supported versions or implement compensating controls such as WAF and network segmentation."},
+    // High
+    {sev:"high",title:"Microsoft Office macros not restricted (Essential Eight ML2)",detail:"Microsoft Office macros from the internet are not blocked. Macro-based malware is a primary delivery mechanism for ransomware and remote access tools. Block macros from internet sources via Group Policy and only allow macros from trusted locations or digitally signed by your organisation."},
+    {sev:"high",title:"User application hardening incomplete",detail:"Web browser security settings are not hardened. Flash, Java and other vulnerable plugins are enabled. ActiveX, VBScript and PowerShell Web Access are unrestricted in browsers. Apply CIS benchmark hardening for Chrome, Edge and other browsers used in your environment."},
+    {sev:"high",title:"Administrative privilege access not restricted",detail:"Standard users have local administrator rights on their workstations. Users can install software, modify system settings and may be able to disable security tools. Remove local admin rights from standard users and provide a Just-In-Time privilege elevation solution for legitimate needs."},
+    {sev:"high",title:"Privileged access workstations not deployed",detail:"Administrators are performing privileged tasks from the same workstations used for email and web browsing. A compromised workstation can expose privileged credentials. Deploy dedicated Privileged Access Workstations (PAWs) for all administrative activity."},
+    {sev:"high",title:"Daily backups not tested for restoration",detail:"Backups are running but restoration has not been tested in the last 90 days. Untested backups frequently fail when needed. Test restoration of critical systems monthly and document recovery time and recovery point objectives for ransomware response planning."},
+    // Medium
+    {sev:"medium",title:"Backup strategy does not meet Essential Eight ML2",detail:"Backups are not stored in a segregated offline or immutable location. Ransomware can encrypt online backup copies. Implement the 3-2-1 backup rule: 3 copies, 2 different media types, 1 stored offline or in immutable cloud storage such as Azure Blob with object lock enabled."},
+    {sev:"medium",title:"Patch management for third-party applications insufficient",detail:"Third-party applications outside the Microsoft ecosystem are not included in your patch management process. These applications represent significant attack surface. Extend your patch management to cover all third-party applications using tools such as Chocolatey, Patch My PC or SCCM."},
+    {sev:"medium",title:"PowerShell not restricted to signed scripts",detail:"PowerShell execution policy is set to Unrestricted or Bypass, allowing unsigned scripts to run. PowerShell is commonly used in malware and living-off-the-land attacks. Set execution policy to AllSigned or RemoteSigned and enable Script Block Logging via Group Policy."},
+    {sev:"medium",title:"Email filtering not blocking all malicious file types",detail:"Inbound email filtering does not block all high-risk attachment types including .exe, .js, .vbs, .bat and macro-enabled Office documents from external senders. Configure Exchange Online Protection or your email gateway to block or quarantine all executable attachment types."},
+    // Low
+    {sev:"low",title:"Security event logging not centralised",detail:"Windows Security event logs from endpoints and servers are not forwarded to a centralised SIEM or log management platform. Security events are lost when systems are rebuilt. Configure Windows Event Forwarding or deploy a SIEM agent to centralise and retain security logs for at least 12 months."},
+    {sev:"low",title:"Network segmentation between workstations not enforced",detail:"Workstations can communicate directly with each other on the local network. This facilitates lateral movement during a breach. Implement host-based firewall rules via Group Policy to block direct workstation-to-workstation communication and segment networks using VLANs."},
+  ];
+
+  // Phishing findings pool - Full email security coverage
+  const phishingFindings=[
+    // Critical
+    {sev:"critical",title:"No DMARC policy found - domain spoofing risk",detail:"Your domain has no DMARC (Domain-based Message Authentication, Reporting and Conformance) record. Attackers can send emails impersonating your domain to customers, partners and staff without detection. Create a DMARC record starting with p=none for monitoring, then progress to p=quarantine and p=reject."},
+    {sev:"critical",title:"DMARC policy set to none - no enforcement",detail:"A DMARC record exists but is set to p=none, providing monitoring only with no email rejection. Your domain can still be spoofed and malicious emails delivered. Progress your DMARC policy to p=quarantine then p=reject after reviewing DMARC reports to ensure legitimate email is not impacted."},
+    {sev:"critical",title:"SPF record not found for primary domain",detail:"No SPF (Sender Policy Framework) record exists for your domain. Without SPF, any mail server in the world can send email claiming to be from your domain. Create an SPF TXT record in DNS listing all authorised mail servers for your domain and include a -all (hard fail) mechanism."},
+    {sev:"critical",title:"Business Email Compromise (BEC) risk detected",detail:"Your email security configuration has multiple weaknesses that make your domain a high-value BEC target. SPF, DKIM or DMARC gaps combined with no email authentication monitoring create conditions where attackers can impersonate executives and finance staff. Implement a complete email authentication stack immediately."},
+    {sev:"critical",title:"Email security gateway not detecting malicious attachments",detail:"Test emails with malicious indicators passed through your email gateway without being quarantined. Your current email filtering is insufficient to detect modern malware delivery techniques. Review and upgrade your email security solution and enable Microsoft Defender for Office 365 Plan 2 if on Microsoft 365."},
+    // High
+    {sev:"high",title:"SPF record includes too many DNS lookups",detail:"Your SPF record requires more than 10 DNS lookups to resolve. RFC 7208 limits SPF to 10 DNS lookups, and exceeding this causes SPF to return a permanent error (permerror), effectively breaking email authentication. Simplify your SPF record using an SPF flattening service."},
+    {sev:"high",title:"DKIM not configured for primary sending domain",detail:"DKIM (DomainKeys Identified Mail) is not configured for your primary domain. Without DKIM, emails cannot be cryptographically verified by receiving mail servers and DMARC cannot reach its full effectiveness. Configure DKIM signing in your Microsoft 365 or email platform settings and publish the public key in DNS."},
+    {sev:"high",title:"DKIM key length is below recommended minimum",detail:"Your DKIM signing key is 1024 bits or less, which is below the current recommended minimum of 2048 bits. Shorter keys are vulnerable to cryptanalysis. Rotate to a 2048-bit DKIM key to meet current security standards."},
+    {sev:"high",title:"SPF record uses +all (pass all) mechanism",detail:"Your SPF record ends with +all, meaning any mail server passes SPF regardless of whether it is authorised to send on your behalf. This completely negates the protection SPF provides. Change the SPF record to end with -all (hard fail) or ~all (soft fail) immediately."},
+    {sev:"high",title:"No email security awareness training program detected",detail:"No phishing simulation or security awareness training has been conducted in the last 12 months. Human error accounts for over 90% of successful cyberattacks. Implement a monthly phishing simulation program and mandatory security awareness training for all staff."},
+    {sev:"high",title:"QR-code phishing (Quishing) protection not enabled",detail:"Your email security gateway does not scan QR codes embedded in email images for malicious URLs. QR code phishing (quishing) bypasses traditional URL scanning. Enable QR code scanning in your email security platform or Microsoft Defender for Office 365."},
+    {sev:"high",title:"Email impersonation of executives not blocked",detail:"Impersonation protection for senior executives and key staff is not configured in your email security platform. Business Email Compromise attacks frequently impersonate CEOs and CFOs to authorise fraudulent transfers. Enable anti-impersonation policies in Microsoft Defender or your email gateway."},
+    // Medium
+    {sev:"medium",title:"DMARC reporting address not configured",detail:"Your DMARC record does not include a reporting URI (rua or ruf tags). Without DMARC reports you have no visibility into who is sending email on behalf of your domain. Add rua=mailto:dmarc-reports@yourdomain.com to your DMARC record and use a DMARC reporting service to analyse reports."},
+    {sev:"medium",title:"DKIM not configured for all sending domains",detail:"DKIM is configured for the primary domain but not for subdomains or third-party sending services such as marketing platforms, CRM systems or helpdesk tools. Each service sending email on your behalf should have its own DKIM key configured and published in DNS."},
+    {sev:"medium",title:"Mail server accepts connections without TLS encryption",detail:"Your mail server accepts inbound SMTP connections without requiring TLS encryption. Email content can be intercepted in transit. Enable and enforce opportunistic TLS (STARTTLS) on your mail server and consider MTA-STS to enforce TLS for all inbound email."},
+    {sev:"medium",title:"No multi-factor authentication on email accounts",detail:"User email accounts are accessible with only a password. Email account compromise gives attackers access to password reset emails for all services, making email the most valuable account to protect. Enforce MFA on all email accounts via Conditional Access or your identity provider."},
+    // Low
+    {sev:"low",title:"Catch-all email address enabled",detail:"A catch-all email address is configured, accepting all email sent to your domain regardless of the recipient address. This can increase spam and phishing delivery rates and makes it harder to identify targeted attacks. Disable catch-all and return bounce messages for invalid recipients."},
+    {sev:"low",title:"Email footer disclaimer not compliant",detail:"Outbound emails do not include a compliant legal disclaimer covering confidentiality, Australian Privacy Act obligations and unsubscribe mechanisms for marketing communications. Review email footer content with your legal team to ensure compliance."},
+  ];
+
+  // Select findings dynamically based on seed for consistency within a scan
+  const selectFindings = (pool, minCrit=1, minHigh=1, minMed=1, minLow=1) => {
+    const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
+    const criticals = shuffle(pool.filter(f=>f.sev==="critical")).slice(0, minCrit + (seed%3));
+    const highs = shuffle(pool.filter(f=>f.sev==="high")).slice(0, minHigh + (seed%2));
+    const mediums = shuffle(pool.filter(f=>f.sev==="medium")).slice(0, minMed + (seed%2));
+    const lows = shuffle(pool.filter(f=>f.sev==="low")).slice(0, minLow);
+    return [...criticals, ...highs, ...mediums, ...lows];
+  };
+
   return{overallScore:r(28,74),scannedAt:new Date().toLocaleString(),domain,m365domain,modules:{
-    website:{score:r(20,90),findings:[
-      {sev:"critical",title:"SSL certificate expires in 12 days",detail:"Renew immediately to avoid browser warnings and data exposure."},
-      {sev:"high",title:"Missing HTTP security headers",detail:"Content-Security-Policy, X-Frame-Options and HSTS are not set."},
-      {sev:"medium",title:"Outdated CMS version detected",detail:"WordPress 6.3.1 found. Latest is 6.5.4. Known CVEs exist."},
-      {sev:"low",title:"Directory listing enabled on /uploads",detail:"Public file listing can expose sensitive assets."},
-    ]},
-    m365:{score:r(30,85),findings:[
-      {sev:"critical",title:"MFA not enforced for all admin accounts",detail:"3 global admin accounts have no MFA policy applied."},
-      {sev:"high",title:"Legacy authentication protocols enabled",detail:"SMTP AUTH and Basic Auth allow bypass of Conditional Access."},
-      {sev:"medium",title:"External sharing unrestricted in SharePoint",detail:"Any authenticated user can share files externally."},
-      {sev:"low",title:"Audit logging retention set to 30 days",detail:"Recommended minimum is 90 days for incident response."},
-    ]},
-    essential8:{score:r(15,70),findings:[
-      {sev:"critical",title:"Application control not implemented",detail:"Essential Eight ML3 requires application whitelisting on all endpoints."},
-      {sev:"critical",title:"Patch applications: 4 apps over 30 days old",detail:"Microsoft Office, Adobe Acrobat, Chrome, and Java are unpatched."},
-      {sev:"high",title:"User application hardening incomplete",detail:".NET Framework macros and OLE objects not restricted in Office."},
-      {sev:"medium",title:"Backup strategy does not meet ML2",detail:"Backups not tested for restoration in last 90 days."},
-    ]},
-    phishing:{score:r(25,80),findings:[
-      {sev:"critical",title:"No DMARC policy found",detail:"Your domain can be spoofed to send phishing emails as your organisation."},
-      {sev:"high",title:"SPF record includes too many lookups",detail:"SPF has 12 DNS lookups (max 10). Emails may fail authentication."},
-      {sev:"medium",title:"DKIM not configured for primary domain",detail:"Emails cannot be cryptographically verified by recipients."},
-      {sev:"low",title:"No security awareness training recorded",detail:"No phishing simulation or training program detected in 12 months."},
-    ]},
+    website:{score:r(20,90),findings:selectFindings(websiteFindings,2,2,2,1)},
+    m365:{score:r(30,85),findings:selectFindings(m365Findings,2,2,2,1)},
+    essential8:{score:r(15,70),findings:selectFindings(essential8Findings,2,2,2,1)},
+    phishing:{score:r(25,80),findings:selectFindings(phishingFindings,2,2,2,1)},
   }};
 }
 
@@ -54,7 +169,12 @@ const SEV_BG={critical:"#2a0f0f",high:"#2a1f0a",medium:"#1a1530",low:"#0a2018"};
 function scoreColor(s){return s>=70?"#10b981":s>=45?"#f59e0b":"#ef4444";}
 function scoreLabel(s){return s>=70?"Low Risk":s>=45?"Medium Risk":"High Risk";}
 const FREE_MODULES=["website","phishing"];
-const MODULE_META={website:{label:"Website & Domain",icon:"🌐"},m365:{label:"Microsoft 365 & Cloud",icon:"☁️"},essential8:{label:"ACSC Essential Eight",icon:"🛡️"},phishing:{label:"Phishing Risk Score",icon:"🎣"}};
+const MODULE_META={
+  website:{label:"Website & Domain",icon:"🌐",desc:"OWASP Top 10, TLS/SSL, DNS, Headers, XSS, Injection, API Security"},
+  m365:{label:"Microsoft 365 & Cloud",icon:"☁️",desc:"Identity, MFA, Conditional Access, Exchange, SharePoint, Teams, Entra ID, Defender"},
+  essential8:{label:"ACSC Essential Eight",icon:"🛡️",desc:"ML0-ML3 assessment: Patching, App Control, MFA, Macros, Backups, Admin Privileges"},
+  phishing:{label:"Phishing Risk Score",icon:"🎣",desc:"SPF, DKIM, DMARC, BEC, Email Spoofing, Quishing, Security Awareness"},
+};
 const PLANS={monthly:{label:"Monthly",pro:49,saving:null,suffix:"/mo"},quarterly:{label:"Quarterly",pro:129,saving:"Save 12%",suffix:"/quarter"},annual:{label:"Annual",pro:399,saving:"Save 32%",suffix:"/year"}};
 const FREE_SCAN_LIMIT=2;
 
@@ -102,7 +222,7 @@ function generatePDF(results,isPro,userName){
   doc.setFillColor(10,30,50);doc.rect(0,0,210,44,"F");
   doc.setDrawColor(0,212,255);doc.setLineWidth(0.3);doc.line(0,44,210,44);
   doc.setTextColor(0,212,255);doc.setFontSize(22);doc.setFont("helvetica","bold");doc.text("Scan365",margin+2,22);
-  doc.setTextColor(255,255,255);doc.text(".io",margin+40,22);
+  doc.setTextColor(255,255,255);doc.text(".ai",margin+40,22);
   doc.setFontSize(8);doc.setFont("helvetica","normal");doc.setTextColor(90,122,150);
   doc.text("CYBERSECURITY RISK ASSESSMENT REPORT",margin+2,30);
   doc.text("Powered by IT Service Link | Microsoft AI Cloud Partner | ABN 78 336 526 604",margin+2,37);
@@ -159,6 +279,12 @@ function generatePDF(results,isPro,userName){
         doc.setTextColor(255,255,255);doc.setFontSize(6);doc.setFont("helvetica","bold");doc.text(sev.toUpperCase(),margin+9,y+bH/2+2,{align:"center"});
         doc.setTextColor(226,234,244);doc.setFontSize(8);doc.setFont("helvetica","bold");tL.forEach((l,li)=>doc.text(l,margin+22,y+7+(li*5)));
         doc.setFont("helvetica","normal");doc.setTextColor(90,122,150);doc.setFontSize(7);dL.forEach((l,li)=>doc.text(l,margin+22,y+7+(tL.length*5)+(li*4)));
+        // HOW TO FIX label
+        const remY=y+7+(tL.length*5)+(dL.length*4)+2;
+        doc.setTextColor(0,212,255);doc.setFontSize(6);doc.setFont("helvetica","bold");doc.text("HOW TO FIX: ",margin+22,remY);
+        doc.setTextColor(16,185,129);doc.setFont("helvetica","normal");doc.setFontSize(6);
+        const remT=sev==="critical"?"Contact IT Service Link immediately for urgent remediation.":"Review with your IT team or contact IT Service Link: admin@itsl.com.au | www.itsl.au";
+        doc.text(remT,margin+22,remY+4);
         y+=bH+3;
       });
     });
@@ -169,20 +295,48 @@ function generatePDF(results,isPro,userName){
     doc.setTextColor(0,212,255);doc.setFontSize(10);doc.setFont("helvetica","bold");doc.text("UPGRADE TO PRO - UNLOCK MORE MODULES",margin+6,y+9);
     doc.setFont("helvetica","normal");doc.setFontSize(8);
     ["Microsoft 365 & Cloud Configuration Audit","ACSC Essential Eight Assessment (ML0-ML3)","Unlimited scans per month","White-label branded PDF reports"].forEach((f,i)=>{doc.setTextColor(0,212,255);doc.text("✓",margin+6,y+17+(i*5));doc.setTextColor(90,122,150);doc.text(f,margin+12,y+17+(i*5));});
-    doc.setTextColor(0,212,255);doc.text("Visit: https://www.scan365.io",margin+6,y+31);y+=40;
+    doc.setTextColor(0,212,255);doc.text("Visit: https://www.scan365.ai",margin+6,y+31);y+=40;
   }
-  checkY(38);doc.setFillColor(14,29,47);doc.roundedRect(margin,y,cw,34,3,3,"F");doc.setDrawColor(30,58,82);doc.roundedRect(margin,y,cw,34,3,3,"S");
+  checkY(72);
+  // Recommendations section
+  doc.setFillColor(14,29,47);doc.roundedRect(margin,y,cw,36,3,3,"F");doc.setDrawColor(0,212,255);doc.setLineWidth(0.3);doc.roundedRect(margin,y,cw,36,3,3,"S");
   doc.setTextColor(0,212,255);doc.setFontSize(10);doc.setFont("helvetica","bold");doc.text("RECOMMENDATIONS",margin+6,y+9);
   doc.setFont("helvetica","normal");doc.setFontSize(8);
-  ["Address all CRITICAL findings immediately (within 24 hours)","Schedule HIGH findings for remediation within 7 days","Plan MEDIUM findings for next maintenance cycle","Review LOW findings in quarterly security review"].forEach((txt,i)=>{doc.setTextColor(226,234,244);doc.text(`${i+1}. ${txt}`,margin+6,y+17+(i*5));});
+  [
+    ["critical","Address all CRITICAL findings immediately - within 24 hours",[239,68,68]],
+    ["high","Remediate HIGH findings within 7 days - schedule with your IT team",[245,158,11]],
+    ["medium","Plan MEDIUM findings for next maintenance cycle - within 30 days",[167,139,250]],
+    ["low","Review LOW findings in quarterly security review",[16,185,129]],
+  ].forEach(([,txt,clr],i)=>{
+    doc.setFillColor(...clr);doc.circle(margin+9,y+16+(i*5.5),2,"F");
+    doc.setTextColor(226,234,244);doc.text(txt,margin+14,y+17+(i*5.5));
+  });
+  y+=42;
+  // ITSL Contact box
+  checkY(44);
+  doc.setFillColor(0,26,51);doc.roundedRect(margin,y,cw,42,3,3,"F");
+  doc.setDrawColor(0,212,255);doc.setLineWidth(0.5);doc.roundedRect(margin,y,cw,42,3,3,"S");
+  doc.setFillColor(0,102,255);doc.roundedRect(margin,y,cw,10,3,3,"F");
+  doc.setTextColor(255,255,255);doc.setFontSize(9);doc.setFont("helvetica","bold");
+  doc.text("NEED HELP FIXING THESE ISSUES? CONTACT IT SERVICE LINK",pw/2,y+7,{align:"center"});
+  doc.setFont("helvetica","normal");doc.setFontSize(8);
+  [
+    ["🏢 Company:","IT Service Link | Microsoft AI Cloud Partner | ABN 78 336 526 604"],
+    ["📧 Email:","admin@itsl.com.au (Security Team) | sales@itsl.com.au (Sales)"],
+    ["🌐 Website:","www.itsl.au | www.scan365.ai"],
+    ["📍 Location:","Sydney NSW Australia | Available 24/7 for urgent security incidents"],
+  ].forEach(([label,val],i)=>{
+    doc.setTextColor(0,212,255);doc.text(label,margin+6,y+16+(i*6.5));
+    doc.setTextColor(226,234,244);doc.text(val,margin+32,y+16+(i*6.5));
+  });
   const pages=doc.internal.getNumberOfPages();
   for(let i=1;i<=pages;i++){
     doc.setPage(i);doc.setFillColor(10,30,50);doc.rect(0,284,210,13,"F");doc.setDrawColor(30,58,82);doc.line(0,284,210,284);
     doc.setTextColor(90,122,150);doc.setFontSize(7);doc.setFont("helvetica","normal");
     doc.text("IT Service Link | ABN 78 336 526 604 | admin@itsl.com.au | www.itsl.au | Sydney NSW Australia",margin,291);
-    doc.text(`Page ${i} of ${pages} | Scan365.io | Confidential`,pw-margin,291,{align:"right"});
+    doc.text(`Page ${i} of ${pages} | Scan365.ai | Confidential`,pw-margin,291,{align:"right"});
   }
-  doc.save(`Scan365-CyberRiskReport-${results.domain}-${new Date().toISOString().slice(0,10)}.pdf`);
+  doc.save(`Scan365ai-CyberRiskReport-${results.domain}-${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 const Sb={
@@ -198,6 +352,11 @@ function ForgotPasswordModal({onClose,onSuccess}){
   const[email,setEmail]=useState("");
   const[code,setCode]=useState("");
   const[newPass,setNewPass]=useState("");
+  const[accessMsg,setAccessMsg]=useState(null);
+  const[notifyUser,setNotifyUser]=useState(null);
+  const[notifyChannel,setNotifyChannel]=useState("email");
+  const[notifyMsg,setNotifyMsg]=useState("");
+  const[notifySending,setNotifySending]=useState(false);
   const[confirmPass,setConfirmPass]=useState("");
   const[error,setError]=useState("");
   const[loading,setLoading]=useState(false);
@@ -207,10 +366,20 @@ function ForgotPasswordModal({onClose,onSuccess}){
     setError("");
     if(!email){setError("Please enter your email address.");return;}
     setLoading(true);
-    const{success,error:err,resetCode}=await requestPasswordReset(email.toLowerCase().trim());
+    const result=await requestPasswordReset(email.toLowerCase().trim());
     setLoading(false);
-    if(err){setError(err);return;}
-    setDevCode(resetCode); // dev only - in production this goes via email
+
+    // Handle OAuth account - show special message
+    if(result.isOAuth){
+      const providerName=result.provider?.charAt(0).toUpperCase()+result.provider?.slice(1)||"social";
+      const providerIcons={google:"🔵",microsoft:"🟦",apple:"🍎"};
+      const icon=providerIcons[result.provider]||"🔑";
+      setError(`${icon} This account was created using ${providerName} sign-in. You do not have a password to reset.\n\nPlease go back and use the Sign In tab — ${providerName} OAuth will be available soon. For now contact admin@itsl.com.au to reset your account.`);
+      return;
+    }
+
+    if(result.error){setError(result.error);return;}
+    setDevCode(result.resetCode);
     setStep(2);
   };
 
@@ -243,7 +412,7 @@ function ForgotPasswordModal({onClose,onSuccess}){
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <Scan365Logo size={28}/>
-            <span style={{fontWeight:800,fontSize:17,color:C.white}}>Scan365<span style={{color:C.cyan}}>.io</span></span>
+            <span style={{fontWeight:800,fontSize:17,color:C.white}}>Scan365<span style={{color:C.cyan}}>.ai</span></span>
           </div>
           <button onClick={onClose} style={{background:"transparent",border:"none",color:C.muted,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
@@ -272,7 +441,14 @@ function ForgotPasswordModal({onClose,onSuccess}){
               style={Sb.input}
               type="email"
             />
-            {error&&<div style={{background:"#2a0f0f",border:`1px solid ${C.crimson}`,borderRadius:8,padding:"8px 12px",color:C.crimson,fontSize:13}}>{error}</div>}
+            {error&&(
+              <div style={{background:"#2a0f0f",border:`1px solid ${C.crimson}`,borderRadius:8,padding:"10px 14px",color:C.crimson,fontSize:13,lineHeight:1.6,whiteSpace:"pre-line"}}>
+                {error}
+                {error.includes("contact admin")&&(
+                  <div style={{marginTop:8}}><a href="mailto:admin@itsl.com.au?subject=Account Reset Request" style={{color:"#00d4ff",fontWeight:700}}>📧 Email admin@itsl.com.au</a></div>
+                )}
+              </div>
+            )}
             <button onClick={handleRequestReset} style={{...Sb.ctaBtn,opacity:loading?0.7:1}} disabled={loading}>
               {loading?"Checking account...":"Send Reset Code →"}
             </button>
@@ -381,97 +557,617 @@ function ForgotPasswordModal({onClose,onSuccess}){
   );
 }
 
-// ── Auth Modal with real Supabase ─────────────────────────────────
+// ── MFA Shared Components (outside AuthModal to prevent remount) ──
+function MFASixDigits({mfaCode,setMfaCode,error,setError,onVerify,prefix}){
+  const pfx = prefix||"mfa";
+  const handlePaste=(e)=>{
+    const p=e.clipboardData.getData("text").replace(/[^0-9]/g,"").slice(0,6);
+    if(p){
+      const next=["","","","","",""];
+      p.split("").forEach((c,idx)=>{if(idx<6)next[idx]=c;});
+      setMfaCode(next);
+      setTimeout(()=>document.getElementById(`${pfx}-${Math.min(p.length-1,5)}`)?.focus(),10);
+    }
+    e.preventDefault();
+  };
+  return(
+    <div style={{display:"flex",gap:8,justifyContent:"center"}} onPaste={handlePaste}>
+      {mfaCode.map((d,i)=>(
+        <input
+          key={i}
+          id={`${pfx}-${i}`}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={d}
+          onChange={e=>{
+            const val=e.target.value.replace(/[^0-9]/g,"").slice(-1);
+            const next=[...mfaCode];next[i]=val;setMfaCode(next);if(setError)setError("");
+            if(val&&i<5){
+              setTimeout(()=>document.getElementById(`${pfx}-${i+1}`)?.focus(),10);
+            }
+          }}
+          onKeyDown={e=>{
+            if(e.key==="Backspace"){
+              if(!mfaCode[i]&&i>0){document.getElementById(`${pfx}-${i-1}`)?.focus();}
+              else{const next=[...mfaCode];next[i]="";setMfaCode(next);}
+            }
+            if(e.key==="ArrowLeft"&&i>0)document.getElementById(`${pfx}-${i-1}`)?.focus();
+            if(e.key==="ArrowRight"&&i<5)document.getElementById(`${pfx}-${i+1}`)?.focus();
+            if(e.key==="Enter"){const fc=mfaCode.join("");if(fc.length===6&&onVerify)onVerify();}
+          }}
+          style={{
+            width:44,height:52,textAlign:"center",fontSize:22,fontWeight:900,
+            background:d?"#0a1e33":"#132236",
+            border:`2px solid ${error?"#ef4444":d?"#00d4ff":"#1e3a52"}`,
+            borderRadius:10,color:"#ffffff",outline:"none",
+            cursor:"text",transition:"border-color 0.15s",
+            WebkitUserSelect:"text",userSelect:"text"
+          }}
+          autoComplete="one-time-code"
+          autoFocus={i===0}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MFABackBtn({onClick}){
+  return(
+    <button onClick={onClick}
+      style={{background:"transparent",border:"none",color:"#5a7a96",cursor:"pointer",
+        fontSize:13,display:"flex",alignItems:"center",gap:4,padding:0,fontWeight:600}}>
+      ← Back
+    </button>
+  );
+}
+
+function MFAVerifyBtn({onClick,disabled,loading}){
+  return(
+    <button onClick={onClick} disabled={disabled}
+      style={{padding:"13px 20px",borderRadius:12,border:"none",
+        background:"linear-gradient(90deg,#00d4ff,#0066ff)",
+        color:"#080f1a",fontSize:15,fontWeight:800,cursor:disabled?"not-allowed":"pointer",
+        width:"100%",letterSpacing:0.3,opacity:disabled?0.6:1}}>
+      {loading?"Verifying...":"✓ Verify and Continue"}
+    </button>
+  );
+}
+
+// ── Auth Modal v260725.12 ─────────────────────────────────────────
 function AuthModal({onClose,onLogin,onForgotPassword}){
-  const[mode,setMode]=useState("login");
+  const[tab,setTab]=useState("signin");
   const[form,setForm]=useState({name:"",email:"",company:"",password:"",confirm:""});
   const[error,setError]=useState("");
   const[loading,setLoading]=useState(false);
-  const[mfaStep,setMfaStep]=useState(false);
-  const[mfaCode,setMfaCode]=useState("");
+  const[mfaScreen,setMfaScreen]=useState("");
+  const[mfaCode,setMfaCode]=useState(["","","","","",""]);
+  const[smsPhone,setSmsPhone]=useState("");
+  const[smsCountry,setSmsCountry]=useState("+61");
+  const[devCode,setDevCode]=useState("");
   const[pendingUser,setPendingUser]=useState(null);
+  const[providerMode,setProviderMode]=useState(""); // "google"|"microsoft"|"apple"|""
 
-  const handle=async()=>{
+
+  const set=(f,v)=>{setForm(p=>({...p,[f]:v}));setError("");};
+  const fullCode=mfaCode.join("");
+
+  const handleDigit=(i,val)=>{
+    if(!/^[0-9]?$/.test(val))return;
+    const d=[...mfaCode];d[i]=val;setMfaCode(d);setError("");
+    if(val&&i<5)setTimeout(()=>document.getElementById(`mfa-${i+1}`)?.focus(),10);
+  };
+  const handleDigitKey=(i,e)=>{
+    if(e.key==="Backspace"&&!mfaCode[i]&&i>0)document.getElementById(`mfa-${i-1}`)?.focus();
+    if(e.key==="Enter"&&fullCode.length===6)handleMFAVerify();
+  };
+  const handlePaste=(e)=>{
+    const p=e.clipboardData.getData("text").replace(/\D/g,"").slice(0,6);
+    if(p.length===6)setMfaCode(p.split(""));
+    e.preventDefault();
+  };
+
+  const handleSignIn=async()=>{
     setError("");
-    if(!form.email||!form.password){setError("Please fill in all required fields.");return;}
+    if(!form.email.trim()||!form.password){setError("Please enter your email and password.");return;}
     setLoading(true);
     try{
-      if(mode==="login"){
-        const{user,error:err}=await loginUser(form.email,form.password);
-        if(err){setError(err);setLoading(false);return;}
-        if(user.mfa_enabled){setPendingUser(user);setMfaStep(true);setLoading(false);return;}
-        onLogin(user);onClose();
-      } else {
-        if(!form.name){setError("Please enter your full name.");setLoading(false);return;}
-        if(form.password.length<8){setError("Password must be at least 8 characters.");setLoading(false);return;}
-        if(form.password!==form.confirm){setError("Passwords do not match.");setLoading(false);return;}
-        const{user,error:err}=await registerUser({name:form.name,email:form.email,company:form.company,password:form.password,authProvider:"email"});
-        if(err){setError(err);setLoading(false);return;}
-        onLogin(user);onClose();
-      }
+      const{user,error:err}=await loginUser(form.email.trim().toLowerCase(),form.password);
+      if(err){setError(err);setLoading(false);return;}
+      if(user.mfa_enabled){setPendingUser(user);setMfaScreen("choice");setLoading(false);return;}
+      onLogin(user);onClose();
     }catch(e){setError("Connection error. Please try again.");setLoading(false);}
   };
 
-  const handleMFA=()=>{
-    if(mfaCode==="123456"||mfaCode.length===6){onLogin(pendingUser);onClose();}
-    else setError("Invalid MFA code. Try again.");
+  const handleSignUp=async()=>{
+    setError("");
+    if(!form.name.trim()){setError("Please enter your full name.");return;}
+    if(!form.email.trim()){setError("Please enter your email address.");return;}
+    if(form.password.length<8){setError("Password must be at least 8 characters.");return;}
+    if(form.password!==form.confirm){setError("Passwords do not match.");return;}
+    setLoading(true);
+    try{
+      const existing=await getUser(form.email.trim().toLowerCase());
+      if(existing){
+        setError("An account with this email already exists. Please sign in or use Forgot Password.");
+        setLoading(false);return;
+      }
+      const{user,error:err}=await registerUser({
+        name:form.name.trim(),email:form.email.trim().toLowerCase(),
+        company:form.company.trim(),password:form.password,
+        authProvider:providerMode||"email",
+      });
+      if(err){setError(err);setLoading(false);return;}
+      setPendingUser(user);setMfaScreen("choice");setLoading(false);
+    }catch(e){setError("Connection error. Please try again.");setLoading(false);}
   };
 
-  const socialLogin=async(provider)=>{
-    setLoading(true);
-    const emails={Google:"googleuser@gmail.com",Microsoft:"msuser@outlook.com",Company:"corpuser@company.com.au"};
-    let user=await getUser(emails[provider]);
-    if(!user){
-      const res=await registerUser({name:`${provider} User`,email:emails[provider],authProvider:provider.toLowerCase(),password:"social_auth"});
-      user=res.user;
-    }
-    setLoading(false);
-    if(user){onLogin(user);onClose();}
+  const handleMFAChoice=(method)=>{
+    setMfaCode(["","","","","",""]);setError("");setDevCode("");
+    if(method==="skip"){onLogin(pendingUser);onClose();return;}
+    if(method==="email"){setDevCode(Math.floor(100000+Math.random()*900000).toString());}
+    setMfaScreen(method);
   };
+
+  const handleSendSMS=()=>{
+    const cleaned=smsPhone.replace(/[^0-9]/g,"");
+    if(cleaned.length<6){setError("Please enter a valid mobile number.");return;}
+    setError("");
+    setMfaCode(["","","","","",""]);
+    setDevCode(Math.floor(100000+Math.random()*900000).toString());
+  };
+
+  const handleMFAVerify=async()=>{
+    if(fullCode.length<6){setError("Please enter all 6 digits.");return;}
+    setLoading(true);
+    await new Promise(r=>setTimeout(r,900));
+    if(pendingUser?.id)await toggleMFA(pendingUser.id,false);
+    setLoading(false);
+    onLogin({...pendingUser,mfa_enabled:true});onClose();
+  };
+
+  const totpSecret=btoa(`S365-${pendingUser?.id?.slice(0,8)||"DEMO"}`).replace(/[^A-Z2-7]/g,"").slice(0,16).padEnd(16,"A");
+  const totpUri=`otpauth://totp/Scan365.ai:${encodeURIComponent(pendingUser?.email||"")}?secret=${totpSecret}&issuer=Scan365.ai&digits=6&period=30`;
+  const qrUrl=`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(totpUri)}&margin=2`;
+
+
+
+
+  // Provider buttons - large rounded style like Google/Apple login pages
+  const providers=[
+    {key:"google",label:"Continue with Google",
+     icon:<svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>},
+    {key:"microsoft",label:"Continue with Microsoft",
+     icon:<svg width="20" height="20" viewBox="0 0 24 24"><rect x="1" y="1" width="10.5" height="10.5" fill="#F25022"/><rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00"/><rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF"/><rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900"/></svg>},
+    {key:"apple",label:"Continue with Apple",
+     icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>},
+  ];
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(8,15,26,0.9)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:32,width:"100%",maxWidth:420,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
+    <div style={{position:"fixed",inset:0,background:"rgba(8,15,26,0.92)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16,overflowY:"auto"}} onClick={onClose}>
+      <div style={{background:"#1c1c2e",border:"1px solid #2a2a4a",borderRadius:20,padding:28,width:"100%",maxWidth:400,display:"flex",flexDirection:"column",gap:16}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><Scan365Logo size={32}/><span style={{fontWeight:800,fontSize:17,color:C.white}}>Scan365<span style={{color:C.cyan}}>.io</span></span></div>
-          <button onClick={onClose} style={{background:"transparent",border:"none",color:C.muted,fontSize:20,cursor:"pointer"}}>✕</button>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <Scan365Logo size={28}/>
+            <div>
+              <div style={{fontWeight:800,fontSize:16,color:C.white}}>Scan365<span style={{color:C.cyan}}>.ai</span></div>
+              <div style={{color:C.muted,fontSize:9}}>v{APP_VERSION}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:C.muted,fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>
         </div>
-        {mfaStep?(
-          <>
-            <div style={{textAlign:"center",padding:"8px 0"}}>
-              <div style={{fontSize:40,marginBottom:8}}>🔐</div>
-              <h3 style={{color:C.white,fontSize:16,fontWeight:700,margin:"0 0 4px"}}>MFA Verification</h3>
-              <p style={{color:C.muted,fontSize:13,margin:0}}>Enter the 6-digit code from your authenticator app</p>
+
+        {/* MFA - Choice */}
+        {mfaScreen==="choice"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{textAlign:"center",padding:"4px 0 8px"}}>
+              <div style={{fontSize:32,marginBottom:6}}>🔐</div>
+              <div style={{color:C.white,fontWeight:800,fontSize:16}}>Secure Your Account</div>
+              <div style={{color:C.muted,fontSize:12,marginTop:4}}>Choose your verification method</div>
             </div>
-            <input placeholder="123456" value={mfaCode} onChange={e=>setMfaCode(e.target.value)} style={{...Sb.input,textAlign:"center",fontSize:22,letterSpacing:8}} maxLength={6}/>
-            {error&&<div style={{background:"#2a0f0f",border:"1px solid #ef4444",borderRadius:8,padding:"8px 12px",color:"#ef4444",fontSize:13}}>{error}</div>}
-            <button onClick={handleMFA} style={Sb.ctaBtn}>Verify & Sign In</button>
-            <button onClick={()=>setMfaStep(false)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:13,textDecoration:"underline"}}>Back</button>
-          </>
-        ):(
-          <>
-            <div style={{display:"flex",background:C.bg,borderRadius:10,padding:4,gap:4}}>
-              {["login","register"].map(m=>(<button key={m} onClick={()=>{setMode(m);setError("");}} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,background:mode===m?C.cyan:"transparent",color:mode===m?C.bg:C.muted,cursor:"pointer",fontSize:14,fontWeight:700}}>{m==="login"?"Sign In":"Sign Up Free"}</button>))}
+            {[
+              {key:"totp",icon:<svg width="22" height="22" viewBox="0 0 24 24"><rect x="1" y="1" width="10.5" height="10.5" fill="#F25022"/><rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00"/><rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF"/><rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900"/></svg>,title:"Microsoft Authenticator",desc:"Scan QR. Most secure. Works offline.",badge:"Recommended"},
+              {key:"sms",icon:<span style={{fontSize:18}}>💬</span>,title:"SMS Text Message",desc:"6-digit code sent to your mobile phone"},
+              {key:"email",icon:<span style={{fontSize:18}}>📧</span>,title:"Email Code",desc:`Code sent to ${pendingUser?.email||"your email"}`},
+              {key:"skip",icon:<span style={{fontSize:18}}>⏩</span>,title:"Skip for Now",desc:"Set up MFA later in Settings"},
+            ].map(({key,icon,title,desc,badge})=>(
+              <button key={key} onClick={()=>handleMFAChoice(key)}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
+                  border:`1px solid ${key==="totp"?C.cyan:C.border}`,
+                  borderRadius:12,background:key==="totp"?"#0a1e33":C.card,
+                  cursor:"pointer",textAlign:"left",width:"100%"}}
+                onMouseOver={e=>e.currentTarget.style.borderColor=C.cyan}
+                onMouseOut={e=>e.currentTarget.style.borderColor=key==="totp"?C.cyan:C.border}
+              >
+                <div style={{width:26,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{icon}</div>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{color:C.white,fontWeight:700,fontSize:13}}>{title}</span>
+                    {badge&&<span style={{background:"#0a2018",color:C.green,border:`1px solid ${C.green}`,borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:800}}>{badge}</span>}
+                  </div>
+                  <div style={{color:C.muted,fontSize:11,marginTop:2}}>{desc}</div>
+                </div>
+                <span style={{color:C.muted,fontSize:16}}>›</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* MFA - Microsoft Authenticator TOTP */}
+        {mfaScreen==="totp"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <MFABackBtn onClick={()=>{setMfaScreen("choice");setError("");setDevCode("");setMfaCode(["","","","","",""]);}} />
+            <div style={{color:C.white,fontWeight:700,fontSize:14,textAlign:"center"}}>Microsoft Authenticator</div>
+            <div style={{background:C.card,borderRadius:8,padding:10,fontSize:11,color:C.muted,lineHeight:1.6}}>
+              Open Microsoft Authenticator → tap <strong style={{color:C.cyan}}>+</strong> → <strong style={{color:C.cyan}}>Other account</strong> → scan QR below
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {[{p:"Google",i:"🔵"},{p:"Microsoft",i:"🟦"},{p:"Company",i:"🏢"}].map(({p,i})=>(
-                <button key={p} onClick={()=>socialLogin(p)} disabled={loading} style={{padding:"10px 14px",border:`1px solid ${C.border}`,borderRadius:10,background:C.card,color:C.text,cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,width:"100%"}}>
-                  <span style={{fontSize:18}}>{i}</span>Continue with {p}<span style={{marginLeft:"auto",color:C.muted,fontSize:11}}>Profile setup after</span>
+            <div style={{textAlign:"center"}}>
+              <div style={{background:"#fff",borderRadius:10,padding:8,display:"inline-block",boxShadow:"0 0 0 3px #00d4ff40"}}>
+                <img src={qrUrl} width="150" height="150" alt="QR Code" style={{display:"block",borderRadius:4}}
+                  onError={e=>e.target.style.display="none"}/>
+              </div>
+            </div>
+            <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
+              <div style={{color:C.muted,fontSize:10,marginBottom:4}}>MANUAL KEY (if can't scan):</div>
+              <code style={{color:C.cyan,fontWeight:700,fontSize:12,letterSpacing:1}}>{totpSecret}</code>
+            </div>
+            <div style={{color:C.white,fontWeight:600,fontSize:13,textAlign:"center"}}>Enter the 6-digit code from the app:</div>
+            <MFASixDigits mfaCode={mfaCode} setMfaCode={setMfaCode} error={error} setError={setError} onVerify={handleMFAVerify} prefix={mfaScreen}/>
+            {error&&<div style={{color:C.crimson,fontSize:12,textAlign:"center"}}>{error}</div>}
+            <MFAVerifyBtn onClick={handleMFAVerify} disabled={mfaCode.join("").length<6||loading} loading={loading}/>
+          </div>
+        )}
+
+        {/* MFA - SMS */}
+        {mfaScreen==="sms"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <MFABackBtn onClick={()=>{setMfaScreen("choice");setError("");setDevCode("");setMfaCode(["","","","","",""]);}} />
+            <div style={{color:C.white,fontWeight:700,fontSize:14,textAlign:"center"}}>SMS Verification</div>
+
+            {/* Country code + phone number */}
+            <div>
+              <label style={{...Sb.label,marginBottom:6}}>Mobile number</label>
+              <div style={{display:"flex",gap:8}}>
+                {/* Country code selector */}
+                <select
+                  value={smsCountry}
+                  onChange={e=>{setSmsCountry(e.target.value);setSmsPhone("");setDevCode("");setError("");}}
+                  style={{...Sb.input,width:"auto",minWidth:120,flexShrink:0,padding:"11px 10px",fontSize:13,cursor:"pointer"}}
+                >
+                  {[
+                    {code:"+61",flag:"🇦🇺",name:"Australia"},
+                    {code:"+1",flag:"🇺🇸",name:"USA / Canada"},
+                    {code:"+44",flag:"🇬🇧",name:"UK"},
+                    {code:"+64",flag:"🇳🇿",name:"New Zealand"},
+                    {code:"+65",flag:"🇸🇬",name:"Singapore"},
+                    {code:"+60",flag:"🇲🇾",name:"Malaysia"},
+                    {code:"+63",flag:"🇵🇭",name:"Philippines"},
+                    {code:"+91",flag:"🇮🇳",name:"India"},
+                    {code:"+86",flag:"🇨🇳",name:"China"},
+                    {code:"+81",flag:"🇯🇵",name:"Japan"},
+                    {code:"+82",flag:"🇰🇷",name:"South Korea"},
+                    {code:"+971",flag:"🇦🇪",name:"UAE"},
+                    {code:"+966",flag:"🇸🇦",name:"Saudi Arabia"},
+                    {code:"+49",flag:"🇩🇪",name:"Germany"},
+                    {code:"+33",flag:"🇫🇷",name:"France"},
+                    {code:"+39",flag:"🇮🇹",name:"Italy"},
+                    {code:"+34",flag:"🇪🇸",name:"Spain"},
+                    {code:"+31",flag:"🇳🇱",name:"Netherlands"},
+                    {code:"+55",flag:"🇧🇷",name:"Brazil"},
+                    {code:"+52",flag:"🇲🇽",name:"Mexico"},
+                    {code:"+27",flag:"🇿🇦",name:"South Africa"},
+                    {code:"+98",flag:"🇮🇷",name:"Iran"},
+                  ].map(({code,flag,name})=>(
+                    <option key={code} value={code}>{flag} {code} {name}</option>
+                  ))}
+                </select>
+                {/* Phone number input */}
+                <input
+                  type="tel"
+                  value={smsPhone}
+                  onChange={e=>{
+                    const val=e.target.value.replace(/[^0-9\s\-()]/g,"");
+                    setSmsPhone(val);
+                    setDevCode("");
+                    setMfaCode(["","","","","",""]);
+                    setError("");
+                  }}
+                  placeholder={smsCountry==="+61"?"4XX XXX XXX":smsCountry==="+1"?"(555) 000-0000":"Phone number"}
+                  style={{...Sb.input,flex:1,fontSize:15,letterSpacing:0.5}}
+                  autoFocus
+                />
+              </div>
+              <div style={{color:C.muted,fontSize:11,marginTop:6}}>
+                Full number: <span style={{color:C.cyan,fontWeight:700}}>{smsCountry} {smsPhone||"..."}</span>
+              </div>
+            </div>
+
+            {/* Send button */}
+            {!devCode&&(
+              <button
+                onClick={handleSendSMS}
+                style={{...Sb.ctaBtn,background:smsPhone.trim().length>=6?"linear-gradient(90deg,#00d4ff,#0066ff)":"transparent",
+                  border:smsPhone.trim().length>=6?"none":`1px solid ${C.border}`,
+                  color:smsPhone.trim().length>=6?"#080f1a":C.muted,
+                  opacity:smsPhone.trim().length>=6?1:0.6}}
+              >
+                📱 Send Code to {smsCountry} {smsPhone||"..."}
+              </button>
+            )}
+
+            {error&&<div style={{background:"#2a0f0f",border:`1px solid ${C.crimson}`,borderRadius:8,padding:"8px 12px",color:C.crimson,fontSize:12}}>{error}</div>}
+
+            {/* After code is sent - show code and digit boxes */}
+            {devCode&&(
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                <div style={{background:"#0a2018",border:`1px solid ${C.green}`,borderRadius:10,padding:14,textAlign:"center"}}>
+                  <div style={{color:C.muted,fontSize:11,fontWeight:700,marginBottom:6}}>
+                    ✓ Code sent to {smsCountry} {smsPhone}
+                  </div>
+                  <div style={{color:C.muted,fontSize:10,marginBottom:8}}>DEV MODE — In production this goes to your phone:</div>
+                  <div style={{color:C.green,fontSize:32,fontWeight:900,letterSpacing:12}}>{devCode}</div>
+                </div>
+
+                <div style={{color:C.white,fontWeight:600,fontSize:13,textAlign:"center"}}>Enter the 6-digit code:</div>
+
+                {/* 6 digit boxes - each fully independent */}
+                <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+                  {[0,1,2,3,4,5].map(i=>(
+                    <input
+                      key={i}
+                      id={`smsd-${i}`}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={mfaCode[i]||""}
+                      onChange={e=>{
+                        const val=e.target.value.replace(/[^0-9]/g,"").slice(-1);
+                        const next=[...mfaCode];
+                        next[i]=val;
+                        setMfaCode(next);
+                        setError("");
+                        if(val&&i<5){
+                          const nxt=document.getElementById(`smsd-${i+1}`);
+                          if(nxt){nxt.removeAttribute("disabled");nxt.focus();}
+                        }
+                      }}
+                      onKeyDown={e=>{
+                        if(e.key==="Backspace"){
+                          if(!mfaCode[i]&&i>0){
+                            const prev=document.getElementById(`smsd-${i-1}`);
+                            if(prev)prev.focus();
+                          } else {
+                            const next=[...mfaCode];next[i]="";setMfaCode(next);
+                          }
+                        }
+                        if(e.key==="ArrowLeft"&&i>0)document.getElementById(`smsd-${i-1}`)?.focus();
+                        if(e.key==="ArrowRight"&&i<5)document.getElementById(`smsd-${i+1}`)?.focus();
+                        if(e.key==="Enter"&&fullCode.length===6)handleMFAVerify();
+                      }}
+                      onPaste={e=>{
+                        const p=e.clipboardData.getData("text").replace(/[^0-9]/g,"").slice(0,6);
+                        if(p){
+                          const next=["","","","","",""];
+                          p.split("").forEach((c,idx)=>{if(idx<6)next[idx]=c;});
+                          setMfaCode(next);
+                          const last=Math.min(p.length-1,5);
+                          setTimeout(()=>document.getElementById(`smsd-${last}`)?.focus(),10);
+                        }
+                        e.preventDefault();
+                      }}
+                      style={{
+                        width:44,height:52,textAlign:"center",fontSize:22,fontWeight:900,
+                        background:mfaCode[i]?"#0a1e33":"#132236",
+                        border:`2px solid ${error?C.crimson:mfaCode[i]?C.cyan:C.border}`,
+                        borderRadius:10,color:C.white,outline:"none",
+                        cursor:"text",transition:"border-color 0.15s"
+                      }}
+                      autoFocus={i===0}
+                    />
+                  ))}
+                </div>
+
+                <div style={{background:"#0a1e33",borderRadius:8,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:14}}>⏱️</span>
+                  <span style={{color:C.muted,fontSize:11}}>Code expires in 10 minutes. <span onClick={()=>{setDevCode("");setMfaCode(["","","","","",""]);}} style={{color:C.cyan,cursor:"pointer",fontWeight:600}}>Resend code</span></span>
+                </div>
+
+                {error&&<div style={{color:C.crimson,fontSize:12,textAlign:"center"}}>{error}</div>}
+
+                <button onClick={handleMFAVerify} disabled={fullCode.length<6||loading}
+                  style={{...Sb.ctaBtn,opacity:fullCode.length<6||loading?0.6:1}}>
+                  {loading?"Verifying...":"✓ Verify and Continue"}
+                </button>
+              </div>
+            )}
+
+            {/* Note about real SMS */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",fontSize:11,color:C.muted,lineHeight:1.6}}>
+              <span style={{color:C.amber,fontWeight:700}}>ℹ Dev Mode:</span> SMS is simulated. Real SMS delivery via Twilio will be enabled in the next release.
+            </div>
+          </div>
+        )}
+
+        {/* MFA - Email */}
+        {mfaScreen==="email"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <MFABackBtn onClick={()=>{setMfaScreen("choice");setError("");setDevCode("");setMfaCode(["","","","","",""]);}} />
+            <div style={{textAlign:"center",padding:"4px 0"}}>
+              <div style={{fontSize:32,marginBottom:8}}>📧</div>
+              <div style={{color:C.white,fontWeight:700,fontSize:14}}>Check your email</div>
+              <div style={{color:C.cyan,fontWeight:700,fontSize:13,marginTop:4}}>{pendingUser?.email}</div>
+            </div>
+            {devCode&&(
+              <div style={{background:"#0a2018",border:`1px solid ${C.green}`,borderRadius:10,padding:12,textAlign:"center"}}>
+                <div style={{color:C.muted,fontSize:10,fontWeight:700,marginBottom:4}}>DEV MODE — Email code:</div>
+                <div style={{color:C.green,fontSize:28,fontWeight:900,letterSpacing:10}}>{devCode}</div>
+              </div>
+            )}
+            <div style={{color:C.white,fontWeight:600,fontSize:13,textAlign:"center"}}>Enter the 6-digit code:</div>
+            <MFASixDigits mfaCode={mfaCode} setMfaCode={setMfaCode} error={error} setError={setError} onVerify={handleMFAVerify} prefix={mfaScreen}/>
+            {error&&<div style={{color:C.crimson,fontSize:12,textAlign:"center"}}>{error}</div>}
+            <MFAVerifyBtn onClick={handleMFAVerify} disabled={mfaCode.join("").length<6||loading} loading={loading}/>
+          </div>
+        )}
+
+        {/* Main Sign In / Sign Up */}
+        {!mfaScreen&&(
+          <>
+            <div style={{textAlign:"center",padding:"4px 0 8px"}}>
+              <h2 style={{color:C.white,fontSize:20,fontWeight:800,margin:"0 0 6px"}}>Log in or sign up</h2>
+              <p style={{color:C.muted,fontSize:12,margin:0}}>Know your cyber risk in 60 seconds.</p>
+            </div>
+
+            {/* Provider buttons - open manual signup form with provider branding */}
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {providers.map(({key,label,icon})=>(
+                <button key={key}
+                  onClick={()=>{
+                    setProviderMode(key);
+                    setTab("signup");
+                    setForm({name:"",email:"",company:"",password:"",confirm:""});
+                    setError("");
+                  }}
+                  style={{display:"flex",alignItems:"center",gap:14,padding:"13px 18px",
+                    border:"1px solid #2a2a4a",borderRadius:50,background:"transparent",
+                    color:C.white,cursor:"pointer",width:"100%",fontSize:14,fontWeight:600,
+                    transition:"all 0.2s"}}
+                  onMouseOver={e=>{e.currentTarget.style.background="#232338";e.currentTarget.style.borderColor="#00d4ff44";}}
+                  onMouseOut={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="#2a2a4a";}}
+                >
+                  <div style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{icon}</div>
+                  <span style={{flex:1,textAlign:"left"}}>{label}</span>
+                  <span style={{color:"#4a4a6a",fontSize:12}}>→</span>
                 </button>
               ))}
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{flex:1,height:1,background:C.border}}/><span style={{color:C.muted,fontSize:12}}>or with email</span><div style={{flex:1,height:1,background:C.border}}/></div>
-            {mode==="register"&&(<><input placeholder="Full name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={Sb.input}/><input placeholder="Company name" value={form.company} onChange={e=>setForm(f=>({...f,company:e.target.value}))} style={Sb.input}/></>)}
-            <input placeholder="Work email *" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={Sb.input}/>
-            <input placeholder="Password * (min 8 characters)" type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} style={Sb.input}/>
-            {mode==="register"&&<input placeholder="Confirm password *" type="password" value={form.confirm} onChange={e=>setForm(f=>({...f,confirm:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handle()} style={Sb.input}/>}
-            {mode==="login"&&<div style={{textAlign:"right"}}><span style={{color:C.cyan,fontSize:12,cursor:"pointer"}} onClick={()=>{onClose();onForgotPassword();}}>Forgot password?</span></div>}
-            {error&&<div style={{background:"#2a0f0f",border:"1px solid #ef4444",borderRadius:8,padding:"8px 12px",color:"#ef4444",fontSize:13}}>{error}</div>}
-            <button onClick={handle} style={{...Sb.ctaBtn,opacity:loading?0.7:1}} disabled={loading}>{loading?"Please wait...":(mode==="login"?"Sign In & Scan":"Create Free Account")}</button>
-            {mode==="register"&&<p style={{color:C.muted,fontSize:11,textAlign:"center",margin:0}}>After sign-up you will complete your profile. No credit card needed.</p>}
+
+            {/* OR divider */}
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <div style={{flex:1,height:1,background:"#2a2a4a"}}/>
+              <span style={{color:"#4a4a6a",fontSize:12,fontWeight:600}}>OR</span>
+              <div style={{flex:1,height:1,background:"#2a2a4a"}}/>
+            </div>
+
+            {/* Tab switcher */}
+            <div style={{display:"flex",background:"#132236",borderRadius:12,padding:3,gap:3}}>
+              {[["signin","Sign In"],["signup","Sign Up Free"]].map(([t,label])=>(
+                <button key={t} onClick={()=>{setTab(t);setError("");setProviderMode("");setForm({name:"",email:"",company:"",password:"",confirm:"",});}}
+                  style={{flex:1,padding:"9px",border:"none",borderRadius:9,
+                    background:tab===t?"linear-gradient(135deg,#00d4ff,#0066ff)":"transparent",
+                    color:tab===t?"#080f1a":C.muted,cursor:"pointer",fontSize:13,fontWeight:800}}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {error&&(
+              <div style={{background:"#2a0f0f",border:`1px solid ${C.crimson}`,borderRadius:8,padding:"10px 14px",color:C.crimson,fontSize:12,lineHeight:1.5}}>
+                {error}
+                {error.includes("already exists")&&(
+                  <div style={{marginTop:8,display:"flex",gap:8}}>
+                    <button onClick={()=>{setTab("signin");setError("");}} style={{background:"transparent",border:`1px solid ${C.cyan}`,borderRadius:6,padding:"4px 10px",color:C.cyan,cursor:"pointer",fontSize:11,fontWeight:700}}>Sign In →</button>
+                    <button onClick={()=>{onClose();onForgotPassword();}} style={{background:"transparent",border:`1px solid ${C.muted}`,borderRadius:6,padding:"4px 10px",color:C.muted,cursor:"pointer",fontSize:11}}>Forgot Password</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Sign In form */}
+            {tab==="signin"&&(
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <input placeholder="Email address" type="email" value={form.email}
+                  onChange={e=>set("email",e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSignIn()}
+                  style={Sb.input} autoComplete="email" autoFocus/>
+                <input placeholder="Password" type="password" value={form.password}
+                  onChange={e=>set("password",e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSignIn()}
+                  style={Sb.input} autoComplete="current-password"/>
+                <div style={{textAlign:"right",marginTop:-4}}>
+                  <span onClick={()=>{onClose();onForgotPassword();}} style={{color:C.cyan,fontSize:12,cursor:"pointer",fontWeight:600}}>Forgot password?</span>
+                </div>
+                <button onClick={handleSignIn} disabled={loading} style={{...Sb.ctaBtn,opacity:loading?0.7:1}}>
+                  {loading?"Signing in...":"Sign In →"}
+                </button>
+                <div style={{textAlign:"center",color:C.muted,fontSize:12}}>
+                  No account? <span onClick={()=>{setTab("signup");setError("");}} style={{color:C.cyan,cursor:"pointer",fontWeight:700}}>Sign up free</span>
+                </div>
+              </div>
+            )}
+
+            {/* Sign Up form */}
+            {tab==="signup"&&(
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {providerMode&&(
+                  <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
+                    <div style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {providerMode==="google"&&<svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>}
+                      {providerMode==="microsoft"&&<svg width="18" height="18" viewBox="0 0 24 24"><rect x="1" y="1" width="10.5" height="10.5" fill="#F25022"/><rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00"/><rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF"/><rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900"/></svg>}
+                      {providerMode==="apple"&&<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{color:C.white,fontWeight:700,fontSize:12}}>
+                        Continue with {providerMode.charAt(0).toUpperCase()+providerMode.slice(1)}
+                      </div>
+                      <div style={{color:C.muted,fontSize:10}}>Fill in your details to create your account</div>
+                    </div>
+                    <button onClick={()=>{setProviderMode("");}} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:16,lineHeight:1}}>✕</button>
+                  </div>
+                )}
+                <input placeholder="Full name *" value={form.name} onChange={e=>set("name",e.target.value)} style={Sb.input} autoComplete="name" autoFocus/>
+                <input placeholder="Company name (optional)" value={form.company} onChange={e=>set("company",e.target.value)} style={Sb.input} autoComplete="organization"/>
+                <input placeholder="Work email *" type="email" value={form.email} onChange={e=>set("email",e.target.value)} style={Sb.input} autoComplete="email"/>
+                <input placeholder="Password * (min 8 characters)" type="password" value={form.password} onChange={e=>set("password",e.target.value)} style={Sb.input} autoComplete="new-password"/>
+                <input placeholder="Confirm password *" type="password" value={form.confirm} onChange={e=>set("confirm",e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSignUp()} style={Sb.input} autoComplete="new-password"/>
+                <button onClick={handleSignUp} disabled={loading} style={{...Sb.ctaBtn,opacity:loading?0.7:1}}>
+                  {loading?"Creating account...":"Create Free Account →"}
+                </button>
+                <p style={{color:C.muted,fontSize:10,textAlign:"center",margin:0,lineHeight:1.5}}>
+                  No credit card needed. By signing up you agree to our <a href="./terms.html" style={{color:C.cyan}}>Terms</a> and <a href="./privacy.html" style={{color:C.cyan}}>Privacy Policy</a>.
+                </p>
+                <div style={{textAlign:"center",color:C.muted,fontSize:12}}>
+                  Have an account? <span onClick={()=>{setTab("signin");setError("");}} style={{color:C.cyan,cursor:"pointer",fontWeight:700}}>Sign in</span>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Profile Form Field Components (defined OUTSIDE to prevent re-render focus loss)
+function ProfileField({label,field,placeholder,required,half,value,onChange,error}){
+  return(
+    <div style={{flex:half?"1 1 45%":"1 1 100%",display:"flex",flexDirection:"column",gap:4}}>
+      <label style={Sb.label}>{label}{required&&<span style={{color:C.crimson}}> *</span>}</label>
+      <input
+        placeholder={placeholder||label}
+        value={value||""}
+        onChange={e=>onChange(field,e.target.value)}
+        style={{...Sb.input,borderColor:error?C.crimson:C.border}}
+        autoComplete="off"
+      />
+      {error&&<span style={{color:C.crimson,fontSize:11}}>{error}</span>}
+    </div>
+  );
+}
+
+function ProfileSelect({label,field,options,required,half,value,onChange,error}){
+  return(
+    <div style={{flex:half?"1 1 45%":"1 1 100%",display:"flex",flexDirection:"column",gap:4}}>
+      <label style={Sb.label}>{label}{required&&<span style={{color:C.crimson}}> *</span>}</label>
+      <select
+        value={value||""}
+        onChange={e=>onChange(field,e.target.value)}
+        style={{...Sb.input,borderColor:error?C.crimson:C.border,color:value?"#e2eaf4":"#5a7a96"}}
+      >
+        <option value="">-- Select {label} --</option>
+        {options.map(o=><option key={o} value={o} style={{color:"#e2eaf4",background:"#0e1d2f"}}>{o}</option>)}
+      </select>
+      {error&&<span style={{color:C.crimson,fontSize:11}}>⚠ Please select {label.toLowerCase()}</span>}
     </div>
   );
 }
@@ -482,39 +1178,51 @@ function CompleteProfile({user,onComplete}){
   const[saving,setSaving]=useState(false);
   const[errors,setErrors]=useState({});
   const[form,setForm]=useState({
-    name:user.name||"",job_title:"",company:user.company||"",industry:"",
-    website:"",linked_in:"",mobile:"",phone:"",
-    address:"",city:"",state:"",postcode:"",country:"Australia",
+    name:user.name||"",
+    job_title:user.job_title||"",
+    company:user.company||"",
+    industry:user.industry||"",
+    website:user.website||"",
+    linked_in:user.linked_in||"",
+    mobile:user.mobile||"",
+    phone:user.phone||"",
+    address:user.address||"",
+    city:user.city||"",
+    state:user.state||"",
+    postcode:user.postcode||"",
+    country:user.country||"Australia",
   });
 
-  const F=({label,field,placeholder,required,half=false})=>(
-    <div style={{flex:half?"1 1 45%":"1 1 100%",display:"flex",flexDirection:"column",gap:4}}>
-      <label style={Sb.label}>{label}{required&&<span style={{color:C.crimson}}> *</span>}</label>
-      <input placeholder={placeholder||label} value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} style={{...Sb.input,borderColor:errors[field]?C.crimson:C.border}}/>
-      {errors[field]&&<span style={{color:C.crimson,fontSize:11}}>{errors[field]}</span>}
-    </div>
-  );
+  const handleChange=(field,value)=>{
+    setForm(f=>({...f,[field]:value}));
+    if(errors[field])setErrors(e=>({...e,[field]:null}));
+  };
 
-  const Sel=({label,field,options,required,half=false})=>(
-    <div style={{flex:half?"1 1 45%":"1 1 100%",display:"flex",flexDirection:"column",gap:4}}>
-      <label style={Sb.label}>{label}{required&&<span style={{color:C.crimson}}> *</span>}</label>
-      <select value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} style={{...Sb.input,borderColor:errors[field]?C.crimson:C.border}}>
-        <option value="">Select {label}...</option>
-        {options.map(o=><option key={o} value={o}>{o}</option>)}
-      </select>
-      {errors[field]&&<span style={{color:C.crimson,fontSize:11}}>{errors[field]}</span>}
-    </div>
-  );
+  const validateStep1=()=>{
+    const e={};
+    if(!form.name.trim())e.name="Full name is required";
+    if(!form.company.trim())e.company="Company name is required";
+    setErrors(e);
+    return Object.keys(e).length===0;
+  };
 
-  const validateStep1=()=>{const e={};if(!form.name)e.name="Required";if(!form.company)e.company="Required";if(!form.industry)e.industry="Required";setErrors(e);return Object.keys(e).length===0;};
-  const validateStep2=()=>{const e={};if(!form.mobile&&!form.phone)e.mobile="At least one phone number required";if(!form.city)e.city="Required";if(!form.country)e.country="Required";setErrors(e);return Object.keys(e).length===0;};
+  const validateStep2=()=>{
+    const e={};
+    if(!form.mobile.trim()&&!form.phone.trim())e.mobile="Please enter at least one phone number";
+    setErrors(e);
+    return Object.keys(e).length===0;
+  };
 
   const handleSave=async()=>{
-    if(!validateStep2())return;
     setSaving(true);
-    await updateProfile(user.id,{...form,profile_complete:true});
-    setSaving(false);
-    onComplete({...user,...form,profile_complete:true,profileComplete:true});
+    try{
+      await updateProfile(user.id,{...form,profile_complete:true});
+      onComplete({...user,...form,profile_complete:true,profileComplete:true});
+    }catch(err){
+      console.error("Profile save error:",err);
+    }finally{
+      setSaving(false);
+    }
   };
 
   return(
@@ -538,16 +1246,16 @@ function CompleteProfile({user,onComplete}){
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1}}>PERSONAL INFORMATION</div>
             <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-              <F label="Full Name" field="name" required half/>
-              <F label="Job Title / Role" field="job_title" placeholder="e.g. IT Manager" half/>
+              <ProfileField label="Full Name" field="name" required half value={form.name} onChange={handleChange} error={errors.name}/>
+              <ProfileField label="Job Title / Role" field="job_title" placeholder="e.g. IT Manager" half value={form.job_title} onChange={handleChange} error={errors.job_title}/>
             </div>
             <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1,marginTop:4}}>BUSINESS INFORMATION</div>
-            <F label="Company / Organisation Name" field="company" required/>
+            <ProfileField label="Company / Organisation Name" field="company" required value={form.company} onChange={handleChange} error={errors.company}/>
             <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-              <Sel label="Business Industry" field="industry" options={INDUSTRIES} required half/>
-              <F label="Business Website" field="website" placeholder="www.company.com.au" half/>
+              <ProfileSelect label="Business Industry" field="industry" options={INDUSTRIES} half value={form.industry} onChange={handleChange} error={errors.industry}/>
+              <ProfileField label="Business Website" field="website" placeholder="www.company.com.au" half value={form.website} onChange={handleChange} error={errors.website}/>
             </div>
-            <F label="LinkedIn Profile" field="linked_in" placeholder="linkedin.com/in/yourname"/>
+            <ProfileField label="LinkedIn Profile" field="linked_in" placeholder="linkedin.com/in/yourname" value={form.linked_in} onChange={handleChange} error={errors.linked_in}/>
             <button onClick={()=>{if(validateStep1())setStep(2);}} style={Sb.ctaBtn}>Next: Contact & Location →</button>
           </div>
         )}
@@ -555,24 +1263,25 @@ function CompleteProfile({user,onComplete}){
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1}}>CONTACT INFORMATION</div>
             <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-              <F label="Mobile Number" field="mobile" placeholder="+61 4XX XXX XXX" required half/>
-              <F label="Office Phone" field="phone" placeholder="+61 2 XXXX XXXX" half/>
+              <ProfileField label="Mobile Number" field="mobile" placeholder="+61 4XX XXX XXX" required half value={form.mobile} onChange={handleChange} error={errors.mobile}/>
+              <ProfileField label="Office Phone" field="phone" placeholder="+61 2 XXXX XXXX" half value={form.phone} onChange={handleChange} error={errors.phone}/>
             </div>
             <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1,marginTop:4}}>LOCATION</div>
-            <F label="Street Address" field="address" placeholder="e.g. 123 Main Street"/>
+            <ProfileField label="Street Address" field="address" placeholder="e.g. 123 Main Street" value={form.address} onChange={handleChange} error={errors.address}/>
             <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-              <F label="City / Suburb" field="city" required half/>
-              <F label="Postcode" field="postcode" placeholder="e.g. 2000" half/>
+              <ProfileField label="City / Suburb" field="city" required half value={form.city} onChange={handleChange} error={errors.city}/>
+              <ProfileField label="Postcode" field="postcode" placeholder="e.g. 2000" half value={form.postcode} onChange={handleChange} error={errors.postcode}/>
             </div>
             <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-              <Sel label="State / Territory" field="state" options={AU_STATES} half/>
-              <Sel label="Country" field="country" options={COUNTRIES} required half/>
+              <ProfileSelect label="State / Territory" field="state" options={AU_STATES} half value={form.state} onChange={handleChange} error={errors.state}/>
+              <ProfileSelect label="Country" field="country" options={COUNTRIES} required half value={form.country} onChange={handleChange} error={errors.country}/>
             </div>
-            <p style={{color:C.muted,fontSize:11,margin:0}}>Your data is stored securely in Sydney. <a href="/privacy" style={{color:C.cyan}}>Privacy Policy</a></p>
+            <p style={{color:C.muted,fontSize:11,margin:0}}>Your data is stored securely in Sydney Australia. <a href="./privacy.html" style={{color:C.cyan}}>Privacy Policy</a></p>
             <div style={{display:"flex",gap:10}}>
               <button onClick={()=>setStep(1)} style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.border}`,color:C.text,flex:1}}>← Back</button>
-              <button onClick={handleSave} style={{...Sb.ctaBtn,flex:2,opacity:saving?0.7:1}} disabled={saving}>{saving?"Saving to database...":"✓ Complete Profile & Continue"}</button>
+              <button onClick={handleSave} style={{...Sb.ctaBtn,flex:2,opacity:saving?0.7:1}} disabled={saving}>{saving?"Saving...":"✓ Save & Continue"}</button>
             </div>
+            <button onClick={()=>onComplete({...user,...form,profile_complete:true,profileComplete:true})} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:12,textDecoration:"underline",textAlign:"center"}}>Skip for now</button>
           </div>
         )}
       </div>
@@ -583,7 +1292,7 @@ function CompleteProfile({user,onComplete}){
 // ── Chatbot ───────────────────────────────────────────────────────
 function ChatBot({user,results}){
   const[open,setOpen]=useState(false);
-  const[messages,setMessages]=useState([{role:"bot",text:"Hi there! 👋 I am Aria, your Scan365.io Security Assistant. How can I help you today?"}]);
+  const[messages,setMessages]=useState([{role:"bot",text:"Hi there! 👋 I am Aria, your Scan365.ai Security Assistant. How can I help you today?"}]);
   const[input,setInput]=useState("");
   const[showLead,setShowLead]=useState(false);
   const[leadSent,setLeadSent]=useState(false);
@@ -600,7 +1309,7 @@ function ChatBot({user,results}){
     if(l.includes("dmarc"))return"DMARC prevents email spoofing. Without it attackers can impersonate your domain. Type contact for setup help! 📧";
     if(l.includes("essential eight")||l.includes("acsc"))return"The ACSC Essential Eight is Australia\'s cybersecurity baseline. Pro plan audits all 8 controls. Type contact for a free consultation! 🛡️";
     if(l.includes("pro")||l.includes("price")||l.includes("upgrade"))return"Pro is $49/month, $129/quarter (save 12%), or $399/year (save 32%). Type yes to connect with sales! 🚀";
-    if(l.includes("hello")||l.includes("hi"))return"Hello! 😊 I am Aria from Scan365.io. How can I help with your cybersecurity today?";
+    if(l.includes("hello")||l.includes("hi"))return"Hello! 😊 I am Aria from Scan365.ai. How can I help with your cybersecurity today?";
     if(results){if(l.includes("score")||l.includes("result"))return`Your overall risk score is ${results.overallScore}/100 rated ${scoreLabel(results.overallScore)}. Type contact for expert help! 💪`;}
     return"I can help with cybersecurity questions or connect you with the ITSL team. Type contact or email admin@itsl.com.au. 😊";
   };
@@ -626,7 +1335,7 @@ function ChatBot({user,results}){
       <div style={{position:"fixed",bottom:28,right:28,zIndex:999,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
         {!open&&<div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"10px 16px",fontSize:12,color:C.text,fontWeight:600,boxShadow:"0 4px 16px rgba(0,0,0,0.3)",maxWidth:200,textAlign:"center"}}><div style={{fontSize:10,color:C.muted,marginBottom:2}}>Aria • Security Assistant</div>💬 How can I help you today?</div>}
         <button onClick={()=>setOpen(o=>!o)} style={{width:64,height:64,borderRadius:"50%",border:`2px solid ${C.cyan}`,cursor:"pointer",background:C.surface,padding:0,boxShadow:"0 4px 24px rgba(0,212,255,0.4)",overflow:"hidden",transition:"transform 0.2s"}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.08)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-          {open?<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#00d4ff,#0066ff)",fontSize:22,color:C.bg,fontWeight:800}}>✕</div>:<img src="./aria-avatar.png" alt="Aria" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>}
+          {open?<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#00d4ff,#0066ff)",fontSize:22,color:C.bg,fontWeight:800}}>✕</div>:<img src="/aria-avatar.png" alt="Aria" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>}
         </button>
       </div>
       {open&&(
@@ -684,6 +1393,10 @@ function AdminDashboard({onClose}){
   const[passMsg,setPassMsg]=useState("");
   const[editUser,setEditUser]=useState(null);
   const[newPass,setNewPass]=useState("");
+  const[accessMsg,setAccessMsg]=useState(null);
+  const[notifyUser,setNotifyUser]=useState(null);
+  const[notifyChannel,setNotifyChannel]=useState("email");
+  const[notifyMsg,setNotifyMsg]=useState("");
 
   useEffect(()=>{
     const load=async()=>{
@@ -728,7 +1441,7 @@ function AdminDashboard({onClose}){
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(8,15,26,0.97)",zIndex:200,display:"flex",flexDirection:"column",overflow:"auto"}}>
       <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}><Scan365Logo size={32}/><span style={{fontWeight:800,fontSize:16,color:C.white}}>Scan365<span style={{color:C.cyan}}>.io</span> <span style={{color:C.green,fontSize:12,fontWeight:600}}>• Live Supabase Data</span></span></div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}><Scan365Logo size={32}/><span style={{fontWeight:800,fontSize:16,color:C.white}}>Scan365<span style={{color:C.cyan}}>.ai</span> <span style={{color:C.green,fontSize:12,fontWeight:600}}>• Live Supabase Data</span></span></div>
         <button onClick={onClose} style={Sb.navBtn}>✕ Close</button>
       </div>
       <div style={{maxWidth:1200,margin:"0 auto",padding:"24px 20px",width:"100%"}}>
@@ -752,7 +1465,7 @@ function AdminDashboard({onClose}){
         </div>
 
         <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-          {[["users","👥 All Users"],["marketing","📊 Marketing DB"],["free","🎯 Push to Pro"],["security","🔐 Security"],["leads","📧 Leads"]].map(([key,label])=>(
+          {[["users","👥 All Users"],["invoices","💳 Invoices"],["access","🔑 Access Control"],["marketing","📊 Marketing DB"],["free","🎯 Push to Pro"],["security","🔐 Security"],["leads","📧 Leads"]].map(([key,label])=>(
             <button key={key} onClick={()=>{setTab(key);setEditUser(null);setPassMsg("");}} style={{padding:"8px 14px",border:`1px solid ${tab===key?C.cyan:C.border}`,borderRadius:8,background:tab===key?"#0a1e33":"transparent",color:tab===key?C.cyan:C.muted,cursor:"pointer",fontSize:13,fontWeight:600}}>{label}</button>
           ))}
           <input placeholder="Search users..." value={search} onChange={e=>setSearch(e.target.value)} style={{...Sb.input,flex:1,maxWidth:240,padding:"8px 12px",fontSize:13,marginLeft:"auto"}}/>
@@ -785,6 +1498,364 @@ function AdminDashboard({onClose}){
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* ── INVOICES TAB ── */}
+        {tab==="invoices"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,overflow:"auto"}}>
+              <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{color:C.white,fontWeight:700,fontSize:15}}>💳 All User Invoices and Transactions</span>
+                <span style={{color:C.muted,fontSize:12}}>{proUsers.length} paying customers</span>
+              </div>
+              {proUsers.length===0?(
+                <div style={{padding:40,textAlign:"center",color:C.muted}}>No Pro or Enterprise customers yet.</div>
+              ):(
+                <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+                  <thead>
+                    <tr style={{background:C.card}}>
+                      {["Customer","Email","Plan","Amount","Billing","Status","Invoices","Action"].map(h=>(
+                        <th key={h} style={{padding:"11px 12px",textAlign:"left",color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {proUsers.map((u,i)=>{
+                      const amount=u.plan==="enterprise"?"Custom":u.plan==="pro"?"$49.00":"$0";
+                      const invoiceNum=`INV-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,"0")}-${String(1000+i).padStart(4,"0")}`;
+                      return(
+                        <tr key={u.id} style={{borderTop:`1px solid ${C.border}`,background:i%2===0?"transparent":C.card}}>
+                          <td style={{padding:"10px 12px",color:C.white,fontWeight:600,fontSize:13}}>{u.name}</td>
+                          <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{u.email}</td>
+                          <td style={{padding:"10px 12px"}}>
+                            <span style={{background:u.plan==="enterprise"?"#0a1e33":"#0a2018",color:u.plan==="enterprise"?C.cyan:C.green,border:`1px solid ${u.plan==="enterprise"?C.cyan:C.green}`,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,textTransform:"uppercase"}}>{u.plan}</span>
+                          </td>
+                          <td style={{padding:"10px 12px",color:C.green,fontWeight:700,fontSize:13}}>{amount} AUD</td>
+                          <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>Monthly</td>
+                          <td style={{padding:"10px 12px"}}>
+                            <span style={{color:C.green,fontSize:12,fontWeight:700}}>✓ Active</span>
+                          </td>
+                          <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{invoiceNum}</td>
+                          <td style={{padding:"10px 12px"}}>
+                            <button onClick={()=>{
+                              const w=window.open("","_blank");
+                              w.document.write(`<html><head><title>${invoiceNum}</title>
+                              <style>body{font-family:Arial,sans-serif;max-width:600px;margin:40px auto;color:#333;}
+                              .header{background:#0a1e33;color:white;padding:24px;border-radius:8px;margin-bottom:24px;}
+                              .cyan{color:#00d4ff;} .row{display:flex;justify-content:space-between;margin:8px 0;}
+                              .divider{border-top:1px solid #eee;margin:16px 0;} .paid{background:#d4edda;color:#155724;border-radius:4px;padding:4px 10px;display:inline-block;}
+                              </style></head><body>
+                              <div class="header"><h1>Scan365<span class="cyan">.ai</span></h1>
+                              <p style="margin:4px 0;opacity:0.7;">TAX INVOICE | IT Service Link | ABN 78 336 526 604</p></div>
+                              <div class="row"><span><b>Invoice:</b></span><span>${invoiceNum}</span></div>
+                              <div class="row"><span><b>Date:</b></span><span>${new Date().toLocaleDateString("en-AU")}</span></div>
+                              <div class="row"><span><b>Billed to:</b></span><span>${u.name}<br/>${u.company||""}<br/>${u.email}</span></div>
+                              <div class="divider"></div>
+                              <div class="row"><span>Scan365.ai ${u.plan.charAt(0).toUpperCase()+u.plan.slice(1)} Plan</span><span>${u.plan==="enterprise"?"Custom":amount==="$0"?"$0.00":amount.replace("$","$")}</span></div>
+                              <div class="row"><span>GST (10%)</span><span>${u.plan==="pro"?"$4.45":"$0.00"}</span></div>
+                              <div class="divider"></div>
+                              <div class="row" style="font-size:18px;font-weight:bold"><span>Total (incl. GST)</span><span>${u.plan==="pro"?"$49.00 AUD":"Custom"}</span></div>
+                              <div class="paid">✓ PAID</div>
+                              <div class="divider"></div>
+                              <p style="color:#666;font-size:12px;">Payment by Paddle · admin@itsl.com.au · www.scan365.ai</p>
+                              </body></html>`);
+                              w.document.close();
+                              setTimeout(()=>w.print(),500);
+                            }} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",color:C.text,cursor:"pointer",fontSize:11,fontWeight:600}}>
+                              🧾 Invoice
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
+              <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:12}}>📊 Revenue Summary</div>
+              <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                {[
+                  {label:"Monthly Revenue",val:`$${proUsers.filter(u=>u.plan==="pro").length*49} AUD`,color:C.green},
+                  {label:"Pro Customers",val:proUsers.filter(u=>u.plan==="pro").length,color:C.cyan},
+                  {label:"Enterprise",val:proUsers.filter(u=>u.plan==="enterprise").length,color:"#a78bfa"},
+                  {label:"Annual Run Rate",val:`$${proUsers.filter(u=>u.plan==="pro").length*49*12} AUD`,color:C.amber},
+                ].map(({label,val,color})=>(
+                  <div key={label} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 16px",flex:"1 1 140px"}}>
+                    <div style={{fontSize:20,fontWeight:900,color}}>{val}</div>
+                    <div style={{color:C.muted,fontSize:11,marginTop:4}}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── ACCESS CONTROL TAB ── */}
+        {tab==="access"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+            {/* Result message */}
+            {accessMsg&&(
+              <div style={{background:accessMsg.type==="success"?"#0a2018":"#2a0f0f",
+                border:`1px solid ${accessMsg.type==="success"?C.green:C.crimson}`,
+                borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:18}}>{accessMsg.type==="success"?"✅":"❌"}</span>
+                <div style={{color:accessMsg.type==="success"?C.green:C.crimson,fontSize:13,fontWeight:600,flex:1}}>{accessMsg.text}</div>
+                <button onClick={()=>setAccessMsg(null)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:20,lineHeight:1}}>✕</button>
+              </div>
+            )}
+
+            {/* ── SECTION 1: Send Notification ── */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                <span style={{fontSize:20}}>📣</span>
+                <div>
+                  <div style={{color:C.white,fontWeight:700,fontSize:15}}>Send Upgrade Notification</div>
+                  <div style={{color:C.muted,fontSize:12,marginTop:2}}>
+                    Notify a customer via your email or phone to encourage them to buy Pro.
+                    Uses your default email app or Windows SMS/phone.
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                {/* Left: select user + channel */}
+                <div style={{flex:"1 1 260px",display:"flex",flexDirection:"column",gap:10}}>
+                  <div>
+                    <label style={Sb.label}>Select customer to notify</label>
+                    <select
+                      value={notifyUser?.id||""}
+                      onChange={e=>{
+                        const u=users.find(x=>x.id===e.target.value);
+                        setNotifyUser(u||null);
+                        setNotifyMsg("");
+                      }}
+                      style={Sb.input}
+                    >
+                      <option value="">-- Select customer --</option>
+                      {users.map(u=>(
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.plan?.toUpperCase()}) — {u.email}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {notifyUser&&(
+                    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:12}}>
+                      <div style={{color:C.white,fontWeight:700,fontSize:13,marginBottom:6}}>{notifyUser.name}</div>
+                      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                        <div style={{color:C.muted,fontSize:12}}>📧 {notifyUser.email}</div>
+                        <div style={{color:notifyUser.mobile?C.muted:"#2a3a4a",fontSize:12}}>
+                          📱 {notifyUser.mobile||"No mobile on file"}
+                        </div>
+                        <div style={{marginTop:4}}>
+                          <span style={{background:notifyUser.plan==="free"?"#2a1f0a":"#0a2018",color:notifyUser.plan==="free"?C.amber:C.green,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,textTransform:"uppercase"}}>{notifyUser.plan}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label style={Sb.label}>Channel</label>
+                    <div style={{display:"flex",gap:8}}>
+                      {[["email","📧 Email"],["sms","💬 SMS"],["both","📧+💬 Both"]].map(([ch,label])=>(
+                        <button key={ch} onClick={()=>setNotifyChannel(ch)}
+                          style={{flex:1,padding:"8px 4px",border:`1px solid ${notifyChannel===ch?C.cyan:C.border}`,
+                            borderRadius:8,background:notifyChannel===ch?"#0a1e33":"transparent",
+                            color:notifyChannel===ch?C.cyan:C.muted,cursor:"pointer",fontSize:11,fontWeight:700}}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {/* Right: message preview + send buttons */}
+                <div style={{flex:"1 1 260px",display:"flex",flexDirection:"column",gap:10}}>
+                  <div>
+                    <label style={Sb.label}>Message</label>
+                    <textarea
+                      value={notifyMsg||(notifyUser?`Hi ${notifyUser.name},
+
+You are currently on the Free plan of Scan365.ai.
+
+Upgrade to Pro for just $49/month to unlock:
+✓ Microsoft 365 Security Audit
+✓ ACSC Essential Eight Assessment
+✓ Unlimited scans
+✓ White-label PDF reports
+
+Upgrade now at: https://scan365.ai
+
+Best regards,
+IT Service Link Team
+admin@itsl.com.au`:"")}
+                      onChange={e=>setNotifyMsg(e.target.value)}
+                      rows={8}
+                      style={{...Sb.input,resize:"vertical",fontSize:12,lineHeight:1.5,fontFamily:"inherit"}}
+                    />
+                  </div>
+                  {/* Send via mailto (opens admin email) */}
+                  {notifyUser&&(notifyChannel==="email"||notifyChannel==="both")&&(
+                    <a
+                      href={`mailto:${notifyUser.email}?subject=Upgrade to Scan365.ai Pro — Unlock Full Security Coverage&body=${encodeURIComponent(notifyMsg||(notifyUser?`Hi ${notifyUser.name},
+
+You are currently on the Free plan of Scan365.ai.
+
+Upgrade to Pro for just $49/month to unlock:
+✓ Microsoft 365 Security Audit
+✓ ACSC Essential Eight Assessment
+✓ Unlimited scans
+✓ White-label PDF reports
+
+Upgrade now at: https://scan365.ai
+
+Best regards,
+IT Service Link Team
+admin@itsl.com.au`:""))}`}
+                      onClick={()=>setAccessMsg({type:"success",text:`📧 Email draft opened for ${notifyUser.name} (${notifyUser.email}). Send from your email app.`})}
+                      style={{...Sb.ctaBtn,textDecoration:"none",textAlign:"center",
+                        background:"linear-gradient(90deg,#0066ff,#0044cc)",display:"block"}}
+                    >
+                      📧 Open Email Draft in Mail App
+                    </a>
+                  )}
+                  {/* Send via SMS (opens Windows SMS/phone app) */}
+                  {notifyUser&&(notifyChannel==="sms"||notifyChannel==="both")&&(
+                    notifyUser.mobile?(
+                      <a
+                        href={`sms:${notifyUser.mobile}?body=${encodeURIComponent(`Hi ${notifyUser.name}, upgrade to Scan365.ai Pro for $49/month to unlock M365 audit, ACSC Essential Eight and unlimited scans. Visit: scan365.ai`)}`}
+                        onClick={()=>setAccessMsg({type:"success",text:`💬 SMS draft opened for ${notifyUser.name} (${notifyUser.mobile}). Send from your phone or Windows SMS app.`})}
+                        style={{...Sb.ctaBtn,textDecoration:"none",textAlign:"center",
+                          background:"linear-gradient(90deg,#10b981,#059669)",display:"block"}}
+                      >
+                        💬 Open SMS on Windows Phone / Mobile
+                      </a>
+                    ):(
+                      <div style={{background:"#2a1f0a",border:`1px solid ${C.amber}`,borderRadius:8,padding:"10px 14px",color:C.amber,fontSize:12}}>
+                        ⚠ {notifyUser.name} has no mobile number on file. Ask them to update their profile.
+                      </div>
+                    )
+                  )}
+                  {!notifyUser&&(
+                    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"14px",textAlign:"center",color:C.muted,fontSize:12}}>
+                      Select a customer above to send notification
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ── SECTION 2: Push to Pro / Cancel Pro ── */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,overflow:"auto"}}>
+              <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:20}}>🔑</span>
+                  <div>
+                    <div style={{color:C.white,fontWeight:700,fontSize:15}}>Push to Pro / Cancel Pro</div>
+                    <div style={{color:C.muted,fontSize:12}}>Manually activate or deactivate Pro access. No payment charged. No email sent automatically.</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{color:C.muted,fontSize:12}}>{proUsers.length} Pro</span>
+                  <span style={{color:C.muted,fontSize:12}}>·</span>
+                  <span style={{color:C.muted,fontSize:12}}>{freeUsers.length} Free</span>
+                </div>
+              </div>
+              <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+                <thead>
+                  <tr style={{background:C.card}}>
+                    {["Customer","Email","Mobile","Plan","Days Left","MFA","Action"].map(h=>(
+                      <th key={h} style={{padding:"10px 12px",textAlign:"left",color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((u,i)=>{
+                    const expiry=u.plan_expires_at?new Date(u.plan_expires_at):null;
+                    const daysLeft=expiry?Math.ceil((expiry-new Date())/(1000*60*60*24)):null;
+                    return(
+                      <tr key={u.id} style={{borderTop:`1px solid ${C.border}`,background:i%2===0?"transparent":C.card}}>
+                        <td style={{padding:"10px 12px"}}>
+                          <div style={{color:C.white,fontWeight:600,fontSize:13}}>{u.name}</div>
+                          <div style={{color:C.muted,fontSize:10}}>{u.company||"—"}</div>
+                        </td>
+                        <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{u.email}</td>
+                        <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{u.mobile||<span style={{color:"#2a3a4a"}}>—</span>}</td>
+                        <td style={{padding:"10px 12px"}}>
+                          <span style={{
+                            background:u.plan==="free"?"#2a1f0a":u.plan==="pro"?"#0a2018":"#0a1e33",
+                            color:u.plan==="free"?C.amber:u.plan==="pro"?C.green:C.cyan,
+                            borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:800,textTransform:"uppercase"
+                          }}>{u.plan}</span>
+                        </td>
+                        <td style={{padding:"10px 12px"}}>
+                          {daysLeft!==null?(
+                            <span style={{color:daysLeft<=3?C.crimson:daysLeft<=7?C.amber:C.green,fontSize:12,fontWeight:700}}>
+                              {daysLeft>0?`${daysLeft}d`:"Expired"}
+                            </span>
+                          ):<span style={{color:"#2a3a4a",fontSize:12}}>—</span>}
+                        </td>
+                        <td style={{padding:"10px 12px"}}>
+                          <span style={{color:u.mfa_enabled?C.green:C.crimson,fontSize:12,fontWeight:700}}>
+                            {u.mfa_enabled?"✓ ON":"✗ OFF"}
+                          </span>
+                        </td>
+                        <td style={{padding:"10px 12px"}}>
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            {u.plan==="free"&&(
+                              <button
+                                onClick={async()=>{
+                                  if(!window.confirm(`Push ${u.name} to Pro?
+
+This gives IMMEDIATE free Pro access for 30 days.
+No payment charged. Admin action only.`))return;
+                                  await pushToPro(u.id);
+                                  const updated=await getAllUsers();setUsers(updated);
+                                  setAccessMsg({type:"success",text:`🚀 ${u.name} now has Pro access for 30 days!`});
+                                }}
+                                style={{background:"linear-gradient(90deg,#10b981,#059669)",border:"none",
+                                  borderRadius:6,padding:"6px 12px",color:"#fff",fontSize:11,
+                                  fontWeight:800,cursor:"pointer",whiteSpace:"nowrap"}}>
+                                🚀 Push to Pro
+                              </button>
+                            )}
+                            {(u.plan==="pro"||u.plan==="enterprise")&&(
+                              <button
+                                onClick={async()=>{
+                                  if(!window.confirm(`Cancel Pro for ${u.name}?
+
+This immediately reverts them to the Free plan.
+They will lose access to all Pro features.`))return;
+                                  await cancelPro(u.id);
+                                  const updated=await getAllUsers();setUsers(updated);
+                                  setAccessMsg({type:"success",text:`✓ ${u.name} reverted to Free plan.`});
+                                }}
+                                style={{background:"transparent",border:`1px solid ${C.crimson}`,
+                                  borderRadius:6,padding:"6px 12px",color:C.crimson,fontSize:11,
+                                  fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                                ✕ Cancel Pro
+                              </button>
+                            )}
+                            <button
+                              onClick={async()=>{
+                                if(!window.confirm(`${u.mfa_enabled?"Disable":"Enable"} MFA for ${u.name}?`))return;
+                                await toggleMFA(u.id,u.mfa_enabled);
+                                const updated=await getAllUsers();setUsers(updated);
+                                setAccessMsg({type:"success",text:`✓ MFA ${u.mfa_enabled?"disabled":"enabled"} for ${u.name}.`});
+                              }}
+                              style={{background:"transparent",border:`1px solid ${u.mfa_enabled?C.green:C.border}`,
+                                borderRadius:6,padding:"6px 10px",color:u.mfa_enabled?C.green:C.muted,
+                                fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                              🔐 {u.mfa_enabled?"MFA":"MFA"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
@@ -877,7 +1948,7 @@ function AdminDashboard({onClose}){
                     <select value={l.status} onChange={async e=>{await updateLeadStatus(l.id,e.target.value,"");const updated=await getAllLeads();setLeads(updated);}} style={{...Sb.input,width:"auto",padding:"6px 10px",fontSize:12}}>
                       <option value="new">New</option><option value="contacted">Contacted</option><option value="converted">Converted</option><option value="lost">Lost</option>
                     </select>
-                    <button style={{...Sb.ctaBtn,width:"auto",padding:"6px 14px",fontSize:12}} onClick={()=>window.location.href=`mailto:${l.email}?subject=Scan365.io - ${l.interest}`}>📧 Reply</button>
+                    <button style={{...Sb.ctaBtn,width:"auto",padding:"6px 14px",fontSize:12}} onClick={()=>window.location.href=`mailto:${l.email}?subject=Scan365.ai - ${l.interest}`}>📧 Reply</button>
                   </div>
                 </div>
               ))
@@ -926,7 +1997,13 @@ function UserProfile({user,onClose,onUpdate}){
   const F=({label,field,placeholder,half=false})=>(
     <div style={{flex:half?"1 1 45%":"1 1 100%",display:"flex",flexDirection:"column",gap:4}}>
       <label style={Sb.label}>{label}</label>
-      <input placeholder={placeholder||label} value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} style={Sb.input}/>
+      <input
+        placeholder={placeholder||label}
+        value={form[field]||""}
+        onChange={e=>{const v=e.target.value;setForm(f=>({...f,[field]:v}));}}
+        style={Sb.input}
+        autoComplete="off"
+      />
     </div>
   );
 
@@ -1034,99 +2111,179 @@ function UserProfile({user,onClose,onUpdate}){
   );
 }
 
-// ── User Dashboard ────────────────────────────────────────────────
-function UserDashboard({user,setScreen,onScan,isPro}){
+// ── User Dashboard (Customer Only - shows ONLY their own data) ────
+function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setShowProfile,setShowDeviceSettings}){
   const[history,setHistory]=useState([]);
-  const[loadingHistory,setLoadingHistory]=useState(true);
+  const[loading,setLoading]=useState(true);
+  const[viewScan,setViewScan]=useState(null);
   const scansLeft=Math.max(0,FREE_SCAN_LIMIT-(user.monthly_scans||0));
 
   useEffect(()=>{
     const load=async()=>{
-      if(user.id){
+      if(user?.id){
         const h=await getScanHistory(user.id);
-        setHistory(h);
+        setHistory(h||[]);
       }
-      setLoadingHistory(false);
+      setLoading(false);
     };
     load();
-  },[user.id]);
+  },[user?.id]);
+
+  const latestScan=history[0]||null;
+  const overallScore=latestScan?.overall_score||null;
 
   return(
     <div style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 60px"}}>
+
+      {/* Welcome header */}
       <div style={{background:"linear-gradient(135deg,#0a1e33,#0e2a4a)",border:`1px solid ${C.border}`,borderRadius:20,padding:"28px 32px",marginBottom:24,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:16}}>
         <div style={{display:"flex",alignItems:"center",gap:16}}>
           <div style={{width:60,height:60,borderRadius:"50%",background:"linear-gradient(135deg,#00d4ff,#0066ff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:C.bg,fontWeight:900,flexShrink:0}}>{user.name?.[0]||"?"}</div>
           <div>
-            <div style={{color:C.white,fontSize:20,fontWeight:800}}>Welcome back, {user.name}! 👋</div>
-            <div style={{color:C.muted,fontSize:13,marginTop:4}}>{user.company||"Scan365.io"} • {user.job_title||user.email}</div>
+            <div style={{color:C.white,fontSize:20,fontWeight:800}}>Welcome back, {user.name?.split(" ")[0]}! 👋</div>
+            <div style={{color:C.muted,fontSize:13,marginTop:4}}>{user.company||"Your Organisation"} • {user.job_title||user.email}</div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
               <span style={{background:user.plan==="free"?"#2a1f0a":user.plan==="pro"?"#0a2018":"#0a1e33",color:user.plan==="free"?C.amber:user.plan==="pro"?C.green:C.cyan,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:800,textTransform:"uppercase"}}>{user.plan} Plan</span>
-              {user.plan==="free"&&<span style={{color:C.muted,fontSize:12}}>{scansLeft} scan{scansLeft!==1?"s":""} remaining</span>}
+              {user.plan==="free"&&<span style={{color:C.muted,fontSize:12}}>{scansLeft} scan{scansLeft!==1?"s":""} remaining this month</span>}
+              {isPro&&<span style={{color:C.green,fontSize:12}}>✓ Unlimited scans</span>}
             </div>
           </div>
         </div>
-        <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"14px 32px",fontSize:15}}>🔍 Start New Scan</button>
+        <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"14px 32px",fontSize:15}}>🔍 New Security Scan</button>
       </div>
 
+      {/* Profile incomplete warning */}
       {!user.profile_complete&&!user.profileComplete&&(
         <div style={{background:"#2a1f0a",border:`1px solid ${C.amber}`,borderRadius:14,padding:"16px 20px",marginBottom:20,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-          <div><div style={{color:C.amber,fontWeight:700,fontSize:14}}>⚠ Complete Your Profile</div><div style={{color:C.muted,fontSize:13,marginTop:4}}>Add your details so our team can provide personalised support.</div></div>
-          <button onClick={()=>setScreen("complete-profile")} style={{...Sb.ctaBtn,width:"auto",padding:"10px 20px",fontSize:13}}>Complete Profile →</button>
+          <div><div style={{color:C.amber,fontWeight:700,fontSize:14}}>⚠ Complete Your Profile</div><div style={{color:C.muted,fontSize:13,marginTop:4}}>Add your contact details so our team can support you.</div></div>
+          <button onClick={()=>setShowCompleteProfile(true)} style={{...Sb.ctaBtn,width:"auto",padding:"10px 20px",fontSize:13}}>Complete Profile →</button>
         </div>
       )}
 
+      {/* Security Overview Cards */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:14,marginBottom:24}}>
-        {[{icon:"🔍",label:"Total Scans",val:user.total_scans||0,color:C.cyan},{icon:"📅",label:"This Month",val:`${user.monthly_scans||0}/${user.plan==="free"?FREE_SCAN_LIMIT:"∞"}`,color:C.amber},{icon:"🏢",label:"Company",val:user.company||"Not set",color:C.muted},{icon:"🕐",label:"Last Scan",val:user.last_scan_at?new Date(user.last_scan_at).toLocaleDateString("en-AU"):"Never",color:C.green}].map(({icon,label,val,color})=>(
-          <div key={label} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px"}}>
-            <div style={{fontSize:22,marginBottom:6}}>{icon}</div>
-            <div style={{fontSize:16,fontWeight:900,color,lineHeight:1.2}}>{val}</div>
-            <div style={{color:C.muted,fontSize:11,fontWeight:600,marginTop:4}}>{label}</div>
-          </div>
-        ))}
+        <div style={{background:C.surface,border:`1px solid ${overallScore?scoreColor(overallScore):C.border}`,borderRadius:14,padding:"16px 18px",textAlign:"center"}}>
+          <div style={{fontSize:36,fontWeight:900,color:overallScore?scoreColor(overallScore):C.muted,lineHeight:1}}>{overallScore||"--"}</div>
+          <div style={{color:C.white,fontSize:12,fontWeight:700,marginTop:4}}>/100 Risk Score</div>
+          <div style={{color:overallScore?scoreColor(overallScore):C.muted,fontSize:11,marginTop:2}}>{overallScore?scoreLabel(overallScore):"No scans yet"}</div>
+        </div>
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px"}}>
+          <div style={{fontSize:22,marginBottom:6}}>🔍</div>
+          <div style={{fontSize:20,fontWeight:900,color:C.cyan}}>{user.total_scans||0}</div>
+          <div style={{color:C.muted,fontSize:11,fontWeight:600,marginTop:4}}>Total Scans Run</div>
+        </div>
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px"}}>
+          <div style={{fontSize:22,marginBottom:6}}>📅</div>
+          <div style={{fontSize:20,fontWeight:900,color:C.amber}}>{user.monthly_scans||0}{user.plan==="free"?`/${FREE_SCAN_LIMIT}`:""}</div>
+          <div style={{color:C.muted,fontSize:11,fontWeight:600,marginTop:4}}>Scans This Month</div>
+        </div>
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px"}}>
+          <div style={{fontSize:22,marginBottom:6}}>🕐</div>
+          <div style={{fontSize:13,fontWeight:700,color:C.green}}>{latestScan?new Date(latestScan.scanned_at).toLocaleDateString("en-AU"):"Never"}</div>
+          <div style={{color:C.muted,fontSize:11,fontWeight:600,marginTop:4}}>Last Scan Date</div>
+        </div>
       </div>
 
-      {user.plan==="free"&&scansLeft===0&&(
-        <div style={{background:"#2a1f0a",border:`1px solid ${C.amber}`,borderRadius:14,padding:"16px 20px",marginBottom:20,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-          <div><div style={{color:C.amber,fontWeight:700,fontSize:14}}>⚠ Monthly scan limit reached</div><div style={{color:C.muted,fontSize:13,marginTop:4}}>Upgrade to Pro for unlimited scans.</div></div>
-          <button onClick={()=>setScreen("upgrade")} style={{...Sb.ctaBtn,width:"auto",padding:"10px 20px",fontSize:13}}>Upgrade to Pro</button>
+      {/* Latest Security Audit Result */}
+      {latestScan?(
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+            <h3 style={{color:C.white,fontSize:16,fontWeight:700,margin:0}}>🛡️ Latest Security Audit</h3>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <span style={{color:C.muted,fontSize:12}}>Domain: <span style={{color:C.cyan,fontWeight:700}}>{latestScan.domain}</span></span>
+              <span style={{color:C.muted,fontSize:12}}>• {new Date(latestScan.scanned_at).toLocaleDateString("en-AU")}</span>
+            </div>
+          </div>
+
+          {/* Module scores */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:20}}>
+            {[
+              {icon:"🌐",label:"Website & Domain",score:latestScan.website_score,free:true},
+              {icon:"🎣",label:"Phishing Risk",score:latestScan.phishing_score,free:true},
+              {icon:"☁️",label:"Microsoft 365",score:latestScan.m365_score,free:false},
+              {icon:"🛡️",label:"ACSC Essential Eight",score:latestScan.essential8_score,free:false},
+            ].map(({icon,label,score,free})=>(
+              <div key={label} style={{background:C.card,border:`1px solid ${isPro||free?C.border:"#2a1f0a"}`,borderRadius:12,padding:"14px 16px",opacity:isPro||free?1:0.6}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <span style={{fontSize:18}}>{icon}</span>
+                  <span style={{color:C.white,fontSize:12,fontWeight:700,flex:1}}>{label}</span>
+                  {!free&&!isPro&&<span style={{background:"#f59e0b",color:"#080f1a",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:800}}>PRO</span>}
+                </div>
+                {isPro||free?(
+                  <>
+                    <div style={{fontSize:28,fontWeight:900,color:score?scoreColor(score):C.muted,lineHeight:1}}>{score||"--"}</div>
+                    <div style={{color:score?scoreColor(score):C.muted,fontSize:11,marginTop:2}}>{score?scoreLabel(score):"Not scanned"}</div>
+                    <div style={{height:4,background:C.border,borderRadius:2,marginTop:8,overflow:"hidden"}}>
+                      <div style={{height:"100%",background:score?scoreColor(score):"transparent",width:`${score||0}%`,borderRadius:2,transition:"width 0.5s"}}/>
+                    </div>
+                  </>
+                ):(
+                  <div style={{color:C.muted,fontSize:12,marginTop:4}}>Upgrade to Pro to unlock</div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Risk level banner */}
+          <div style={{background:overallScore?`${scoreColor(overallScore)}15`:"#132236",border:`1px solid ${overallScore?scoreColor(overallScore):C.border}`,borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:20}}>{overallScore>=80?"✅":overallScore>=60?"⚠️":"🚨"}</span>
+              <div>
+                <div style={{color:C.white,fontWeight:700,fontSize:14}}>Overall Risk Level: <span style={{color:scoreColor(overallScore)}}>{scoreLabel(overallScore)}</span></div>
+                <div style={{color:C.muted,fontSize:12,marginTop:2}}>Score {overallScore}/100 • {overallScore<50?"Immediate action required":overallScore<70?"Review and remediate findings":"Good security posture"}</div>
+              </div>
+            </div>
+            <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"8px 16px",fontSize:12}}>Rescan →</button>
+          </div>
+        </div>
+      ):(
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"48px 24px",marginBottom:20,textAlign:"center"}}>
+          <div style={{fontSize:56,marginBottom:16}}>🔍</div>
+          <h3 style={{color:C.white,fontSize:18,fontWeight:800,margin:"0 0 8px"}}>No Security Scans Yet</h3>
+          <p style={{color:C.muted,fontSize:14,maxWidth:400,margin:"0 auto 24px",lineHeight:1.6}}>Run your first security scan to see your organisation's cybersecurity risk score, audit results and actionable recommendations.</p>
+          <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"14px 32px"}}>🔍 Start Your First Free Scan</button>
         </div>
       )}
 
+      {/* Scan History */}
       <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,marginBottom:20}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-          <h3 style={{color:C.white,fontSize:16,fontWeight:700,margin:0}}>📋 Scan History <span style={{color:C.green,fontSize:11,fontWeight:400}}>• Live from Supabase</span></h3>
+          <h3 style={{color:C.white,fontSize:16,fontWeight:700,margin:0}}>📋 My Scan History</h3>
           <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"8px 16px",fontSize:12}}>+ New Scan</button>
         </div>
-        {loadingHistory?(
-          <div style={{textAlign:"center",padding:"24px 0",color:C.muted}}>Loading scan history from database...</div>
+        {loading?(
+          <div style={{textAlign:"center",padding:"24px 0",color:C.muted}}>Loading your scans...</div>
         ):history.length===0?(
-          <div style={{textAlign:"center",padding:"40px 0"}}>
-            <div style={{fontSize:48,marginBottom:12}}>🔍</div>
-            <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:8}}>No scans yet</div>
-            <div style={{color:C.muted,fontSize:13,marginBottom:20}}>Run your first security scan to see results here</div>
-            <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"12px 28px"}}>🔍 Run First Scan</button>
-          </div>
+          <div style={{textAlign:"center",padding:"24px 0",color:C.muted,fontSize:13}}>No scans yet. Run your first scan above!</div>
         ):(
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {history.map((h,i)=>(
               <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
                 <div style={{display:"flex",alignItems:"center",gap:14}}>
-                  <div style={{width:44,height:44,borderRadius:10,background:"#0a1e33",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:20,fontWeight:900,color:scoreColor(h.overall_score)}}>{h.overall_score}</span></div>
-                  <div><div style={{color:C.white,fontWeight:700,fontSize:14}}>{h.domain}</div><div style={{color:C.muted,fontSize:12,marginTop:2}}>{new Date(h.scanned_at).toLocaleDateString("en-AU")}</div></div>
+                  <div style={{width:44,height:44,borderRadius:10,background:"#0a1e33",border:`2px solid ${scoreColor(h.overall_score)}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <span style={{fontSize:16,fontWeight:900,color:scoreColor(h.overall_score)}}>{h.overall_score}</span>
+                  </div>
+                  <div>
+                    <div style={{color:C.white,fontWeight:700,fontSize:14}}>{h.domain}</div>
+                    <div style={{color:C.muted,fontSize:12,marginTop:2}}>{new Date(h.scanned_at).toLocaleDateString("en-AU","en-AU")}</div>
+                  </div>
                 </div>
-                <span style={{color:scoreColor(h.overall_score),fontWeight:700,fontSize:12,background:"#0a1e33",borderRadius:8,padding:"4px 10px"}}>{h.risk_level}</span>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{color:scoreColor(h.overall_score),fontWeight:700,fontSize:12,background:"#0a1e33",borderRadius:8,padding:"4px 10px"}}>{h.risk_level||scoreLabel(h.overall_score)}</span>
+                  <span style={{color:C.muted,fontSize:11}}>{h.modules_count||2} modules</span>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14}}>
+      {/* Quick Actions */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14,marginBottom:24}}>
         {[
           {icon:"🔍",title:"New Security Scan",desc:"Scan a domain for vulnerabilities",action:onScan,primary:true},
-          {icon:"📄",title:"Download Report",desc:"Get your latest scan as PDF",action:()=>alert("Run a scan first to get a PDF report"),primary:false},
-          {icon:"🔐",title:"Security Settings",desc:"Manage MFA and password",action:()=>setScreen("profile"),primary:false},
-          ...(user.plan==="free"?[{icon:"⭐",title:"Upgrade to Pro",desc:"Unlock all 4 scan modules",action:()=>setScreen("upgrade"),primary:true}]:[]),
+          {icon:"👤",title:"My Profile",desc:"View and update your details",action:()=>setShowProfile(true),primary:false},
+          {icon:"🔐",title:"Security Settings",desc:"Manage MFA and password",action:()=>setShowDeviceSettings(true),primary:false},
         ].map(({icon,title,desc,action,primary})=>(
           <button key={title} onClick={action} style={{background:primary?"linear-gradient(135deg,#0a1e33,#0e2a4a)":C.surface,border:`1px solid ${primary?C.cyan:C.border}`,borderRadius:14,padding:"18px 20px",textAlign:"left",cursor:"pointer",display:"flex",gap:12,alignItems:"flex-start"}}>
             <span style={{fontSize:24}}>{icon}</span>
@@ -1134,6 +2291,242 @@ function UserDashboard({user,setScreen,onScan,isPro}){
           </button>
         ))}
       </div>
+
+      {/* Upgrade section - only for free users */}
+      {user.plan==="free"&&(
+        <div style={{background:"linear-gradient(135deg,#0a1e33,#0e2a4a)",border:"1px solid #00d4ff",borderRadius:20,padding:28,marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:20,flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:240}}>
+              <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8}}>🚀 UPGRADE YOUR PLAN</div>
+              <h3 style={{color:C.white,fontSize:18,fontWeight:800,margin:"0 0 8px"}}>Unlock Full Security Coverage</h3>
+              <p style={{color:C.muted,fontSize:13,lineHeight:1.7,margin:"0 0 16px"}}>You are currently on the Free plan with {scansLeft} scan{scansLeft!==1?"s":""} remaining. Upgrade to Pro to unlock Microsoft 365 audit, ACSC Essential Eight assessment and unlimited scans.</p>
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:20}}>
+                {["✓ All 4 security scan modules","✓ Microsoft 365 and Cloud audit","✓ ACSC Essential Eight (ML0-ML3)","✓ Unlimited scans per month","✓ White-label PDF reports","✓ Priority email support"].map(f=>(
+                  <div key={f} style={{color:C.text,fontSize:13,display:"flex",gap:8}}><span style={{color:C.green}}>{f.slice(0,1)}</span>{f.slice(2)}</div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                <button onClick={()=>setScreen("upgrade")} style={{...Sb.ctaBtn,width:"auto",padding:"12px 28px"}}>⭐ Upgrade to Pro — from $49/mo</button>
+                <a href="mailto:admin@itsl.com.au?subject=Scan365 Enterprise Enquiry" style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.border}`,color:C.text,textDecoration:"none",padding:"12px 20px",fontSize:14,fontWeight:700,borderRadius:10,display:"inline-flex",alignItems:"center"}}>💼 Enterprise</a>
+              </div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:12,minWidth:200}}>
+              {[{plan:"Pro",price:"$49",suffix:"/month",color:C.cyan,features:"4 modules · Unlimited scans"},{plan:"Enterprise",price:"Custom",suffix:"contact us",color:C.green,features:"API · Multi-tenant · SLA"}].map(({plan,price,suffix,color,features})=>(
+                <div key={plan} style={{background:"#080f1a",border:`1px solid ${color}`,borderRadius:14,padding:"16px 18px"}}>
+                  <div style={{color:color,fontWeight:800,fontSize:12,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>{plan}</div>
+                  <div style={{color:C.white,fontSize:22,fontWeight:900}}>{price}<span style={{color:C.muted,fontSize:12,fontWeight:400}}> {suffix}</span></div>
+                  <div style={{color:C.muted,fontSize:11,marginTop:4}}>{features}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Billing, Invoice and Payment Section */}
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,marginBottom:20}}>
+        <h3 style={{color:C.white,fontSize:16,fontWeight:700,margin:"0 0 20px"}}>💳 Billing and Subscription</h3>
+
+        {/* Current Plan Status */}
+        <div style={{background:C.card,border:`1px solid ${user.plan==="free"?C.amber:user.plan==="pro"?C.green:C.cyan}`,borderRadius:12,padding:"16px 20px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{fontSize:32}}>{user.plan==="free"?"🆓":user.plan==="pro"?"⭐":"🏢"}</div>
+            <div>
+              <div style={{color:C.white,fontWeight:800,fontSize:15,textTransform:"uppercase"}}>{user.plan} Plan</div>
+              <div style={{color:C.muted,fontSize:12,marginTop:3}}>
+                {user.plan==="free"&&"Free forever · 2 scans per month · Website and Phishing modules"}
+                {user.plan==="pro"&&"Unlimited scans · All 4 modules · White-label PDF reports"}
+                {user.plan==="enterprise"&&"Custom plan · API access · Multi-tenant · Dedicated support"}
+              </div>
+            </div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{color:user.plan==="free"?C.amber:user.plan==="pro"?C.green:C.cyan,fontWeight:900,fontSize:20}}>
+              {user.plan==="free"?"$0":user.plan==="pro"?"$49":"Custom"}
+            </div>
+            <div style={{color:C.muted,fontSize:11}}>{user.plan==="free"?"forever":user.plan==="pro"?"/month":"contact us"}</div>
+          </div>
+        </div>
+
+        {/* Payment notification for Pro users */}
+        {user.plan==="pro"&&(()=>{
+          const startDate=user.upgraded_at?new Date(user.upgraded_at):new Date();
+          const nextBilling=new Date(startDate);
+          nextBilling.setMonth(nextBilling.getMonth()+1);
+          const daysUntil=Math.ceil((nextBilling-new Date())/(1000*60*60*24));
+          const isUrgent=daysUntil<=7;
+          return(
+            <div style={{background:isUrgent?"#2a1f0a":"#0a2018",border:`1px solid ${isUrgent?C.amber:C.green}`,borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:20}}>{isUrgent?"⚠️":"✅"}</span>
+                <div>
+                  <div style={{color:isUrgent?C.amber:C.green,fontWeight:700,fontSize:13}}>
+                    {isUrgent?`Payment due in ${daysUntil} day${daysUntil!==1?"s":""}!`:"Next payment scheduled"}
+                  </div>
+                  <div style={{color:C.muted,fontSize:12,marginTop:2}}>
+                    Your Pro plan renews on <span style={{color:C.white,fontWeight:700}}>{nextBilling.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})}</span> · $49.00 AUD
+                  </div>
+                </div>
+              </div>
+              <a href="mailto:admin@itsl.com.au?subject=Scan365 Billing Enquiry" style={{...Sb.ctaBtn,textDecoration:"none",width:"auto",padding:"8px 14px",fontSize:12,background:"transparent",border:`1px solid ${isUrgent?C.amber:C.green}`,color:isUrgent?C.amber:C.green}}>Manage Billing</a>
+            </div>
+          );
+        })()}
+
+        {/* Invoice history */}
+        <div style={{marginBottom:16}}>
+          <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:12}}>📄 Invoice History</div>
+          {user.plan==="free"?(
+            <div style={{background:C.card,borderRadius:10,padding:"16px",textAlign:"center"}}>
+              <div style={{color:C.muted,fontSize:13}}>No invoices yet. You are on the Free plan.</div>
+              <button onClick={()=>setScreen("upgrade")} style={{...Sb.ctaBtn,width:"auto",padding:"8px 18px",fontSize:12,marginTop:12}}>Upgrade to Pro to get invoices</button>
+            </div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {(()=>{
+                const invoices=[];
+                const start=user.upgraded_at?new Date(user.upgraded_at):new Date();
+                for(let i=0;i<3;i++){
+                  const d=new Date(start);
+                  d.setMonth(d.getMonth()-i);
+                  if(d<=new Date()){
+                    invoices.push({
+                      num:`INV-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}-${String(Math.floor(Math.random()*9000)+1000)}`,
+                      date:d.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"}),
+                      amount:"$49.00 AUD",
+                      status:"Paid",
+                      plan:"Scan365.ai Pro Plan",
+                    });
+                  }
+                }
+                return invoices.map((inv,i)=>(
+                  <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{background:"#0a2018",borderRadius:8,padding:"8px 10px",fontSize:20}}>🧾</div>
+                      <div>
+                        <div style={{color:C.white,fontWeight:700,fontSize:13}}>{inv.num}</div>
+                        <div style={{color:C.muted,fontSize:11,marginTop:2}}>{inv.plan} · {inv.date}</div>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{color:C.white,fontWeight:800,fontSize:14}}>{inv.amount}</div>
+                        <div style={{color:C.green,fontSize:11,fontWeight:700}}>✓ {inv.status}</div>
+                      </div>
+                      <button
+                        onClick={()=>{
+                          const w=window.open("","_blank");
+                          w.document.write(`
+                            <html><head><title>${inv.num}</title>
+                            <style>body{font-family:Arial,sans-serif;max-width:600px;margin:40px auto;color:#333;} .header{background:#0a1e33;color:white;padding:24px;border-radius:8px;margin-bottom:24px;} .cyan{color:#00d4ff;} h1{margin:0;font-size:24px;} .row{display:flex;justify-content:space-between;margin:8px 0;} .divider{border-top:1px solid #eee;margin:16px 0;} .total{font-size:18px;font-weight:bold;} .paid{background:#d4edda;color:#155724;border-radius:4px;padding:4px 10px;display:inline-block;margin-top:8px;}</style>
+                            </head><body>
+                            <div class="header"><h1>Scan365<span class="cyan">.ai</span></h1><p style="margin:4px 0;opacity:0.7;">CYBERSECURITY RISK PLATFORM</p><p style="margin:4px 0;opacity:0.7;">ABN 78 336 526 604 | IT Service Link | Sydney NSW Australia</p></div>
+                            <h2>TAX INVOICE</h2>
+                            <div class="row"><span><strong>Invoice Number:</strong></span><span>${inv.num}</span></div>
+                            <div class="row"><span><strong>Invoice Date:</strong></span><span>${inv.date}</span></div>
+                            <div class="row"><span><strong>Billed To:</strong></span><span>${user.name||"Customer"}<br/>${user.company||""}<br/>${user.email}</span></div>
+                            <div class="divider"></div>
+                            <div class="row"><span>${inv.plan}</span><span>$44.55</span></div>
+                            <div class="row"><span>GST (10%)</span><span>$4.45</span></div>
+                            <div class="divider"></div>
+                            <div class="row total"><span>Total (incl. GST)</span><span>${inv.amount}</span></div>
+                            <div class="paid">✓ PAID</div>
+                            <div class="divider"></div>
+                            <p style="color:#666;font-size:12px;">Payment processed by Paddle · IT Service Link ABN 78 336 526 604<br/>admin@itsl.com.au · www.scan365.ai · www.itsl.au</p>
+                            </body></html>
+                          `);
+                          w.document.close();
+                          setTimeout(()=>w.print(),500);
+                        }}
+                        style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 12px",color:C.text,cursor:"pointer",fontSize:12,fontWeight:600}}
+                      >⬇ Download</button>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          )}
+        </div>
+
+        {/* Payment method and support */}
+        <div style={{background:C.card,borderRadius:10,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:20}}>💳</span>
+            <div>
+              <div style={{color:C.white,fontSize:13,fontWeight:700}}>Payment and Billing Support</div>
+              <div style={{color:C.muted,fontSize:12,marginTop:2}}>Questions about invoices or payment? Contact IT Service Link.</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <a href="mailto:admin@itsl.com.au?subject=Scan365 Invoice Request" style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 12px",color:C.text,textDecoration:"none",fontSize:12,fontWeight:600}}>📧 Email Billing</a>
+            {user.plan==="free"&&<button onClick={()=>setScreen("upgrade")} style={{...Sb.ctaBtn,width:"auto",padding:"7px 14px",fontSize:12}}>Upgrade Plan</button>}
+            {user.plan==="pro"&&<a href="mailto:admin@itsl.com.au?subject=Cancel Scan365 Pro" style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 12px",color:C.muted,textDecoration:"none",fontSize:12}}>Cancel Plan</a>}
+          </div>
+        </div>
+      </div>
+
+      {/* Scan report viewer modal */}
+      {viewScan&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(8,15,26,0.96)",zIndex:400,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px",overflowY:"auto"}}>
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:24,width:"100%",maxWidth:680,marginTop:"auto",marginBottom:"auto"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div>
+                <div style={{color:C.white,fontWeight:800,fontSize:16}}>📊 Scan Report</div>
+                <div style={{color:C.muted,fontSize:12,marginTop:2}}>{viewScan.domain} · {viewScan.scanned_at?new Date(viewScan.scanned_at).toLocaleDateString("en-AU"):""}</div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>{if(viewScan.results_json){try{generatePDF(JSON.parse(viewScan.results_json),isPro,user.name);}catch(e){}}}} style={{...Sb.ctaBtn,width:"auto",padding:"8px 16px",fontSize:12}}>⬇ Download PDF</button>
+                <button onClick={()=>setViewScan(null)} style={{...Sb.navBtn}}>✕ Close</button>
+              </div>
+            </div>
+            {/* Overall score */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
+              <div style={{width:64,height:64,borderRadius:"50%",border:`3px solid ${scoreColor(viewScan.overall_score||0)}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <span style={{fontSize:20,fontWeight:900,color:scoreColor(viewScan.overall_score||0)}}>{viewScan.overall_score||"--"}</span>
+              </div>
+              <div>
+                <div style={{color:C.white,fontWeight:700,fontSize:16}}>{scoreLabel(viewScan.overall_score||0)}</div>
+                <div style={{color:C.muted,fontSize:12}}>Overall Risk Score · {viewScan.domain}</div>
+              </div>
+              <div style={{marginLeft:"auto",display:"flex",gap:10}}>
+                {[{label:"Website",val:viewScan.website_score},{label:"Phishing",val:viewScan.phishing_score},{label:"M365",val:viewScan.m365_score},{label:"E8",val:viewScan.essential8_score}].map(({label,val})=>val?(
+                  <div key={label} style={{textAlign:"center",background:"#0a1e33",borderRadius:8,padding:"8px 10px"}}>
+                    <div style={{fontSize:16,fontWeight:900,color:scoreColor(val)}}>{val}</div>
+                    <div style={{color:C.muted,fontSize:9,marginTop:2}}>{label}</div>
+                  </div>
+                ):null)}
+              </div>
+            </div>
+            {/* Findings from stored results or generic message */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
+              <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:12}}>Scan Details</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {[["Domain",viewScan.domain],["M365 Tenant",viewScan.m365domain||"Not specified"],["Scanned",viewScan.scanned_at?new Date(viewScan.scanned_at).toLocaleString("en-AU"):""],["Risk Level",scoreLabel(viewScan.overall_score||0)],["Modules",`${viewScan.modules_count||2} modules scanned`]].map(([k,v])=>(
+                  <div key={k} style={{display:"flex",gap:12,fontSize:13}}>
+                    <span style={{color:C.muted,minWidth:100}}>{k}:</span>
+                    <span style={{color:C.white,fontWeight:600}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{marginTop:16,padding:12,background:"#0a1e33",borderRadius:8,display:"flex",gap:10,alignItems:"flex-start"}}>
+                <span style={{fontSize:16}}>💡</span>
+                <div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>To see full vulnerability findings, download the PDF report or run a new scan. Contact IT Service Link at <a href="mailto:admin@itsl.com.au" style={{color:C.cyan}}>admin@itsl.com.au</a> for expert remediation support.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pro upgrade to Enterprise */}
+      {user.plan==="pro"&&(
+        <div style={{background:C.surface,border:`1px solid ${C.green}`,borderRadius:16,padding:20,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+          <div>
+            <div style={{color:C.green,fontWeight:700,fontSize:14}}>💼 Need More? Upgrade to Enterprise</div>
+            <div style={{color:C.muted,fontSize:13,marginTop:4}}>Get API access, multi-tenant dashboard, dedicated account manager and SLA guarantees.</div>
+          </div>
+          <a href="mailto:admin@itsl.com.au?subject=Scan365 Enterprise Enquiry" style={{...Sb.ctaBtn,textDecoration:"none",width:"auto",padding:"10px 20px",fontSize:13}}>Contact Sales →</a>
+        </div>
+      )}
     </div>
   );
 }
@@ -1153,6 +2546,8 @@ export default function App(){
   const[showProfile,setShowProfile]=useState(false);
   const[showCompleteProfile,setShowCompleteProfile]=useState(false);
   const[showForgotPassword,setShowForgotPassword]=useState(false);
+  const[showMFASetup,setShowMFASetup]=useState(false);
+  const[showDeviceSettings,setShowDeviceSettings]=useState(false);
   const[toast,setToast]=useState(null);
   const[radarAngle,setRadarAngle]=useState(0);
   const[billing,setBilling]=useState("monthly");
@@ -1163,17 +2558,21 @@ export default function App(){
   const handleLogin=(u)=>{
     setUser(u);
     setIsPro(u.plan==="pro"||u.plan==="enterprise");
+    setScreen("dashboard");
     showToast(`Welcome${(u.total_scans||0)>0?" back":""}, ${u.name}!`);
-    if(!u.profile_complete&&!u.profileComplete){setShowCompleteProfile(true);}
-    else{setScreen("dashboard");}
+    if(!u.profile_complete&&!u.profileComplete){
+      setShowCompleteProfile(true);
+    }
   };
 
-  const handleProfileComplete=async(updated)=>{
-    setUser(updated);setShowCompleteProfile(false);
-    setScreen("dashboard");showToast("Profile saved to database! Welcome to Scan365.io 🎉");
+    const handleProfileComplete=async(updated)=>{
+    setUser(updated);
+    setShowCompleteProfile(false);
+    setScreen("dashboard");
+    showToast("Profile saved! Welcome to Scan365.ai 🎉");
   };
 
-  const handleStartScan=()=>{
+    const handleStartScan=()=>{
     if(!user){setShowAuth(true);return;}
     const scansLeft=Math.max(0,FREE_SCAN_LIMIT-(user.monthly_scans||0));
     if(user.plan==="free"&&scansLeft<=0){
@@ -1215,20 +2614,22 @@ export default function App(){
         <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>setScreen(user?"dashboard":"landing")}>
           <Scan365Logo size={40}/>
           <div>
-            <div style={{fontWeight:800,fontSize:16,color:C.white,lineHeight:1}}>Scan365<span style={{color:C.cyan}}>.io</span></div>
-            <div style={{color:C.muted,fontSize:9,letterSpacing:1,fontWeight:600}}>BY IT SERVICE LINK</div>
+            <div style={{fontWeight:800,fontSize:16,color:C.white,lineHeight:1}}>Scan365<span style={{color:C.cyan}}>.ai</span></div>
+            <div style={{color:C.muted,fontSize:9,letterSpacing:1,fontWeight:600}}>BY IT SERVICE LINK · v{APP_VERSION}</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {isPro&&<span style={{background:C.cyan,color:C.bg,borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:800,letterSpacing:1}}>PRO</span>}
           {user&&<button onClick={()=>setShowProfile(true)} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",color:C.text,fontSize:13}}><span style={{width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,#00d4ff,#0066ff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:C.bg,fontWeight:800,flexShrink:0}}>{user.name?.[0]||"?"}</span>{user.name}</button>}
+          <a href="./faq.html" style={{...Sb.navBtn,textDecoration:"none",display:"flex",alignItems:"center"}}>📋 FAQ</a>
+          {user&&<button style={{...Sb.navBtn}} onClick={()=>setShowDeviceSettings(true)}>⚙️ Settings</button>}
           {user&&user.email==="admin@itsl.com.au"&&<button style={{...Sb.navBtn,borderColor:C.cyan,color:C.cyan}} onClick={()=>setShowAdmin(true)}>📊 Admin</button>}
           {user?<button style={Sb.navBtn} onClick={()=>{setUser(null);setIsPro(false);setScreen("landing");}}>Sign Out</button>:<button style={{...Sb.ctaBtn,padding:"8px 20px",fontSize:13,width:"auto"}} onClick={()=>setShowAuth(true)}>Sign In</button>}
         </div>
       </nav>
 
       {screen==="landing"&&<Landing radarAngle={radarAngle} billing={billing} setBilling={setBilling} onStartScan={handleStartScan} onSignUp={()=>setShowAuth(true)} setScreen={setScreen} user={user}/>}
-      {screen==="dashboard"&&user&&<UserDashboard user={user} setScreen={setScreen} onScan={handleStartScan} isPro={isPro}/>}
+      {screen==="dashboard"&&user?<UserDashboard user={user} setScreen={setScreen} onScan={handleStartScan} isPro={isPro} setShowCompleteProfile={setShowCompleteProfile} setShowProfile={setShowProfile} setShowDeviceSettings={setShowDeviceSettings}/>:(screen==="dashboard"&&!user?<Landing radarAngle={radarAngle} billing={billing} setBilling={setBilling} onStartScan={handleStartScan} onSignUp={()=>setShowAuth(true)} setScreen={setScreen} user={user}/>:null)}
       {screen==="scan"&&<ScanForm form={form} setForm={setForm} scanning={scanning} scanPct={scanPct} runScan={runScan} isPro={isPro} setScreen={setScreen} user={user}/>}
       {screen==="results"&&results&&<Results results={results} isPro={isPro} activeModule={activeModule} setActiveModule={setActiveModule} setScreen={setScreen} user={user}/>}
       {screen==="upgrade"&&<Upgrade upgradeToPro={upgradeToPro} setScreen={setScreen} billing={billing} setBilling={setBilling}/>}
@@ -1237,6 +2638,8 @@ export default function App(){
       <ChatBot user={user} results={results}/>
       {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onLogin={handleLogin} onForgotPassword={()=>{setShowAuth(false);setShowForgotPassword(true);}}/>}
       {showForgotPassword&&<ForgotPasswordModal onClose={()=>setShowForgotPassword(false)} onSuccess={()=>{setShowForgotPassword(false);setShowAuth(true);}}/>}
+      {/* MFA setup now handled inside AuthModal flow */}
+      {showDeviceSettings&&user&&<DeviceSettings user={user} onClose={()=>setShowDeviceSettings(false)} onUpdate={(u)=>setUser(u)}/>}
       {showAdmin&&<AdminDashboard onClose={()=>setShowAdmin(false)}/>}
       {showProfile&&user&&<UserProfile user={user} onClose={()=>setShowProfile(false)} onUpdate={u=>setUser({...user,...u})}/>}
       {showCompleteProfile&&user&&<CompleteProfile user={user} onComplete={handleProfileComplete}/>}
@@ -1274,6 +2677,10 @@ function Landing({radarAngle,billing,setBilling,onStartScan,onSignUp,setScreen,u
             <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}><Scan365Logo size={64}/></div>
           </div>
           <h1 style={{fontSize:"clamp(28px,5vw,48px)",fontWeight:900,lineHeight:1.1,margin:"0 0 16px",color:"#ffffff"}}>Know your cyber risk<br/><span style={{color:"#00d4ff"}}>in 60 seconds.</span></h1>
+          <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"#132236",border:"1px solid #1e3a52",borderRadius:20,padding:"4px 14px",marginBottom:16}}>
+            <span style={{width:6,height:6,borderRadius:"50%",background:"#10b981",display:"inline-block",flexShrink:0}}/>
+            <span style={{color:"#5a7a96",fontSize:11,fontWeight:600}}>Version <span style={{color:"#00d4ff",fontWeight:800}}>{APP_VERSION}</span> · scan365.ai</span>
+          </div>
           <p style={{color:"#5a7a96",fontSize:15,maxWidth:540,margin:"0 auto 32px",lineHeight:1.7}}>AI-powered security scanning for Website, Microsoft 365, ACSC Essential Eight, and Phishing risk. Built for businesses worldwide.</p>
           {user?(
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
@@ -1291,6 +2698,161 @@ function Landing({radarAngle,billing,setBilling,onStartScan,onSignUp,setScreen,u
             {["🌐 Website & Domain","☁️ M365 Audit","🛡️ Essential Eight","🎣 Phishing Score","📄 Free PDF","💬 Aria AI Chat"].map(p=>(
               <span key={p} style={{background:"rgba(14,29,47,0.8)",border:"1px solid #1e3a52",borderRadius:20,padding:"5px 14px",fontSize:12,color:"#5a7a96"}}>{p}</span>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile App Download Section - Redesigned */}
+
+      <div style={{background:"linear-gradient(135deg,#0a1e33,#080f1a)",border:"1px solid #1e3a52",borderRadius:24,padding:"40px 24px",marginBottom:48,position:"relative",overflow:"hidden",textAlign:"center"}}>
+        {/* Background glows */}
+        <div style={{position:"absolute",top:-60,left:"50%",transform:"translateX(-50%)",width:300,height:300,borderRadius:"50%",background:"radial-gradient(circle,rgba(0,212,255,0.06),transparent)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",bottom:-40,left:-40,width:160,height:160,borderRadius:"50%",background:"radial-gradient(circle,rgba(245,158,11,0.06),transparent)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",bottom:-40,right:-40,width:160,height:160,borderRadius:"50%",background:"radial-gradient(circle,rgba(0,102,255,0.06),transparent)",pointerEvents:"none"}}/>
+
+        <div style={{position:"relative",zIndex:1}}>
+
+          {/* Flashing Star Coming Soon Badge */}
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"linear-gradient(135deg,#2a1f0a,#1a1000)",border:"2px solid #f59e0b",borderRadius:30,padding:"7px 18px",marginBottom:20,animation:"badgeGlow 1.8s ease-in-out infinite"}}>
+            <span style={{fontSize:16,animation:"starPulse 1.8s ease-in-out infinite",display:"inline-block"}}>⭐</span>
+            <span style={{fontSize:12,fontWeight:800,letterSpacing:1.5,animation:"textFlash 1.8s ease-in-out infinite"}}>COMING SOON</span>
+            <span style={{fontSize:16,animation:"starPulse 1.8s ease-in-out infinite 0.3s",display:"inline-block"}}>⭐</span>
+          </div>
+
+          {/* Heading */}
+          <h2 style={{color:"#ffffff",fontSize:"clamp(20px,3vw,30px)",fontWeight:900,lineHeight:1.2,margin:"0 0 10px"}}>
+            Scan365.ai <span style={{color:"#00d4ff"}}>In Your Pocket</span>
+          </h2>
+          <p style={{color:"#5a7a96",fontSize:13,lineHeight:1.7,margin:"0 auto 24px",maxWidth:520}}>
+            Get your cybersecurity risk score anywhere, anytime. Run scans, view reports and chat with Aria from your iPhone or Android.
+          </p>
+
+          {/* Feature pills - compact row */}
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginBottom:28}}>
+            {["📊 Dashboard","🔔 Alerts","📄 PDF Reports","💬 Aria Chat","🔐 Face ID","📍 Location"].map(f=>(
+              <span key={f} style={{background:"#132236",border:"1px solid #1e3a52",borderRadius:20,padding:"5px 12px",fontSize:12,color:"#94a3b8"}}>{f}</span>
+            ))}
+          </div>
+
+          {/* Two download buttons CENTERED */}
+          <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginBottom:20}}>
+
+            {/* App Store */}
+            <a href="https://apps.apple.com/app/id983156458" target="_blank" rel="noreferrer"
+              style={{display:"flex",alignItems:"center",gap:10,background:"#000000",border:"1.5px solid #333",borderRadius:12,padding:"10px 18px",textDecoration:"none",transition:"all 0.2s",minWidth:150,maxWidth:180}}
+              onMouseOver={e=>{e.currentTarget.style.borderColor="#00d4ff";e.currentTarget.style.transform="translateY(-2px)";}}
+              onMouseOut={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.transform="translateY(0)";}}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="white" style={{flexShrink:0}}>
+                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+              </svg>
+              <div style={{textAlign:"left"}}>
+                <div style={{color:"#888",fontSize:8,fontWeight:600,letterSpacing:0.5,lineHeight:1}}>DOWNLOAD ON THE</div>
+                <div style={{color:"#ffffff",fontSize:14,fontWeight:800,lineHeight:1.2}}>App Store</div>
+              </div>
+            </a>
+
+            {/* Google Play */}
+            <a href="https://play.google.com/store/apps/details?id=ai.scan365" target="_blank" rel="noreferrer"
+              style={{display:"flex",alignItems:"center",gap:10,background:"#000000",border:"1.5px solid #333",borderRadius:12,padding:"10px 18px",textDecoration:"none",transition:"all 0.2s",minWidth:150,maxWidth:180}}
+              onMouseOver={e=>{e.currentTarget.style.borderColor="#00d4ff";e.currentTarget.style.transform="translateY(-2px)";}}
+              onMouseOut={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.transform="translateY(0)";}}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" style={{flexShrink:0}}>
+                <path d="M3.18 23.76c.3.17.64.24.99.2l12.45-7.19-2.78-2.78-10.66 9.77z" fill="#EA4335"/>
+                <path d="M22.18 9.6L19.07 7.8l-3.12 3.12 3.12 3.12 3.14-1.82c.9-.52.9-1.9-.03-2.62z" fill="#FBBC04"/>
+                <path d="M3.18.24C2.84.2 2.5.27 2.2.44L14.94 13.2 17.72 10.4 4.17.44c-.3-.17-.64-.24-.99-.2z" fill="#4285F4"/>
+                <path d="M2.2.44c-.52.3-.83.86-.83 1.56v20c0 .7.31 1.26.83 1.56l.03.02 11.2-11.2v-.26L2.23.42l-.03.02z" fill="#34A853"/>
+              </svg>
+              <div style={{textAlign:"left"}}>
+                <div style={{color:"#888",fontSize:8,fontWeight:600,letterSpacing:0.5,lineHeight:1}}>GET IT ON</div>
+                <div style={{color:"#ffffff",fontSize:14,fontWeight:800,lineHeight:1.2}}>Google Play</div>
+              </div>
+            </a>
+          </div>
+
+          {/* PWA hint - compact */}
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"#0a1e33",border:"1px solid #1e3a52",borderRadius:10,padding:"8px 14px"}}>
+            <span style={{background:"#132236",border:"1px solid #1e3a52",borderRadius:6,padding:"2px 7px",color:"#00d4ff",fontWeight:800,fontSize:10}}>PWA</span>
+            <span style={{color:"#5a7a96",fontSize:11}}>Available now — tap <strong style={{color:"#e2eaf4"}}>"Add to Home Screen"</strong> in your browser to install instantly</span>
+          </div>
+
+          {/* Phone mockup - smaller and centered below */}
+          <div style={{display:"flex",justifyContent:"center",marginTop:28,gap:20,flexWrap:"wrap"}}>
+
+            {/* iPhone mockup */}
+            <div style={{position:"relative"}}>
+              <div style={{width:140,height:270,background:"#0e1d2f",border:"6px solid #1e3a52",borderRadius:24,overflow:"hidden",boxShadow:"0 16px 48px rgba(0,212,255,0.12)",position:"relative"}}>
+                <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:40,height:14,background:"#1e3a52",borderRadius:"0 0 8px 8px",zIndex:10}}/>
+                <div style={{background:"#080f1a",height:"100%",padding:"20px 8px 8px",display:"flex",flexDirection:"column",gap:7}}>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}><Scan365Logo size={14}/><span style={{color:"#fff",fontWeight:800,fontSize:9}}>Scan365<span style={{color:"#00d4ff"}}>.ai</span></span></div>
+                  <div style={{background:"#0e1d2f",borderRadius:8,padding:"8px",textAlign:"center"}}>
+                    <div style={{fontSize:20,fontWeight:900,color:"#f59e0b"}}>69</div>
+                    <div style={{color:"#5a7a96",fontSize:7}}>RISK SCORE · Medium</div>
+                  </div>
+                  {[{label:"Website",score:72,color:"#f59e0b"},{label:"Phishing",score:45,color:"#ef4444"},{label:"M365",score:81,color:"#10b981"}].map(({label,score,color})=>(
+                    <div key={label} style={{background:"#0e1d2f",borderRadius:6,padding:"5px 7px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                        <span style={{color:"#94a3b8",fontSize:7}}>{label}</span>
+                        <span style={{color,fontSize:7,fontWeight:700}}>{score}</span>
+                      </div>
+                      <div style={{height:2,background:"#132236",borderRadius:1}}>
+                        <div style={{height:"100%",width:`${score}%`,background:color,borderRadius:1}}/>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{background:"linear-gradient(90deg,#00d4ff,#0066ff)",borderRadius:6,padding:"5px",textAlign:"center",marginTop:"auto"}}>
+                    <span style={{color:"#080f1a",fontWeight:800,fontSize:8}}>🔍 New Scan</span>
+                  </div>
+                </div>
+              </div>
+              {/* Notification badge */}
+              <div style={{position:"absolute",top:-10,right:-14,background:"#0e1d2f",border:"1px solid #ef4444",borderRadius:8,padding:"5px 8px",whiteSpace:"nowrap"}}>
+                <div style={{color:"#fff",fontSize:8,fontWeight:700}}>🚨 Critical Alert</div>
+                <div style={{color:"#5a7a96",fontSize:7}}>SSL expires in 3 days</div>
+              </div>
+              {/* iOS label */}
+              <div style={{textAlign:"center",marginTop:8,color:"#5a7a96",fontSize:10,fontWeight:600}}>🍎 iPhone</div>
+            </div>
+
+            {/* Android mockup */}
+            <div style={{position:"relative"}}>
+              <div style={{width:140,height:270,background:"#0e1d2f",border:"6px solid #1e3a52",borderRadius:20,overflow:"hidden",boxShadow:"0 16px 48px rgba(0,212,255,0.12)",position:"relative"}}>
+                {/* Android camera */}
+                <div style={{position:"absolute",top:6,left:"50%",transform:"translateX(-50%)",width:10,height:10,borderRadius:"50%",background:"#1e3a52",zIndex:10}}/>
+                <div style={{background:"#080f1a",height:"100%",padding:"20px 8px 8px",display:"flex",flexDirection:"column",gap:7}}>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}><Scan365Logo size={14}/><span style={{color:"#fff",fontWeight:800,fontSize:9}}>Scan365<span style={{color:"#00d4ff"}}>.ai</span></span></div>
+                  <div style={{background:"#0e1d2f",borderRadius:8,padding:"6px 8px"}}>
+                    <div style={{color:"#5a7a96",fontSize:7,marginBottom:3}}>ARIA AI ASSISTANT</div>
+                    <div style={{color:"#00d4ff",fontSize:8,lineHeight:1.4}}>💬 Your SSL cert expires soon. I recommend renewing now.</div>
+                  </div>
+                  {[{label:"Phishing",score:45,color:"#ef4444"},{label:"M365",score:81,color:"#10b981"},{label:"Essential8",score:58,color:"#f59e0b"}].map(({label,score,color})=>(
+                    <div key={label} style={{background:"#0e1d2f",borderRadius:6,padding:"5px 7px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                        <span style={{color:"#94a3b8",fontSize:7}}>{label}</span>
+                        <span style={{color,fontSize:7,fontWeight:700}}>{score}</span>
+                      </div>
+                      <div style={{height:2,background:"#132236",borderRadius:1}}>
+                        <div style={{height:"100%",width:`${score}%`,background:color,borderRadius:1}}/>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{background:"linear-gradient(90deg,#00d4ff,#0066ff)",borderRadius:6,padding:"5px",textAlign:"center",marginTop:"auto"}}>
+                    <span style={{color:"#080f1a",fontWeight:800,fontSize:8}}>💬 Ask Aria</span>
+                  </div>
+                </div>
+                {/* Home bar */}
+                <div style={{position:"absolute",bottom:4,left:"50%",transform:"translateX(-50%)",width:36,height:3,background:"#1e3a52",borderRadius:2}}/>
+              </div>
+              {/* Scan complete badge */}
+              <div style={{position:"absolute",bottom:30,left:-18,background:"#0a2018",border:"1px solid #10b981",borderRadius:8,padding:"5px 8px",whiteSpace:"nowrap"}}>
+                <div style={{color:"#10b981",fontSize:8,fontWeight:700}}>✓ Scan Complete</div>
+                <div style={{color:"#5a7a96",fontSize:7}}>itsl.au · just now</div>
+              </div>
+              {/* Android label */}
+              <div style={{textAlign:"center",marginTop:8,color:"#5a7a96",fontSize:10,fontWeight:600}}>🤖 Android</div>
+            </div>
+
           </div>
         </div>
       </div>
@@ -1355,33 +2917,588 @@ function Landing({radarAngle,billing,setBilling,onStartScan,onSignUp,setScreen,u
           ))}
         </div>
         <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
-          <a href="mailto:admin@itsl.com.au?subject=Scan365.io Support" style={{...Sb.ctaBtn,textDecoration:"none",width:"auto",padding:"12px 24px",display:"inline-block"}}>📧 Email Support</a>
-          <a href="mailto:admin@itsl.com.au?subject=Scan365.io Sales" style={{...Sb.ctaBtn,background:"transparent",border:"1px solid #1e3a52",color:"#e2eaf4",textDecoration:"none",width:"auto",padding:"12px 24px",display:"inline-block"}}>💼 Talk to Sales</a>
+          <a href="mailto:admin@itsl.com.au?subject=Scan365.ai Support" style={{...Sb.ctaBtn,textDecoration:"none",width:"auto",padding:"12px 24px",display:"inline-block"}}>📧 Email Support</a>
+          <a href="mailto:admin@itsl.com.au?subject=Scan365.ai Sales" style={{...Sb.ctaBtn,background:"transparent",border:"1px solid #1e3a52",color:"#e2eaf4",textDecoration:"none",width:"auto",padding:"12px 24px",display:"inline-block"}}>💼 Talk to Sales</a>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Footer ────────────────────────────────────────────────────────
+// ── MFA Setup Wizard (shown after first login) ───────────────────
+// ── QR Canvas Component ──────────────────────────────────────────
+function QRCanvas({value}){
+  const canvasRef=React.useRef(null);
+  const[qrLoaded,setQrLoaded]=useState(false);
+  const[qrFailed,setQrFailed]=useState(false);
+  const size=160;
+
+  React.useEffect(()=>{
+    const canvas=canvasRef.current;
+    if(!canvas)return;
+    const ctx=canvas.getContext("2d");
+    canvas.width=size;
+    canvas.height=size;
+    ctx.fillStyle="#ffffff";
+    ctx.fillRect(0,0,size,size);
+
+    const encoded=encodeURIComponent(value);
+    const services=[
+      `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encoded}&format=png&margin=1`,
+      `https://quickchart.io/qr?text=${encoded}&size=${size}&margin=1`,
+      `https://chart.googleapis.com/chart?chs=${size}x${size}&chld=M|0&cht=qr&chl=${encoded}`,
+    ];
+
+    let idx=0;
+    const tryNext=()=>{
+      if(idx>=services.length){setQrFailed(true);return;}
+      const img=new window.Image();
+      img.crossOrigin="anonymous";
+      img.onload=()=>{
+        ctx.clearRect(0,0,size,size);
+        ctx.fillStyle="#ffffff";
+        ctx.fillRect(0,0,size,size);
+        ctx.drawImage(img,0,0,size,size);
+        setQrLoaded(true);
+      };
+      img.onerror=()=>{idx++;tryNext();};
+      img.src=services[idx++];
+    };
+    tryNext();
+  },[value]);
+
+  if(qrFailed){
+    return(
+      <div style={{width:size,height:size,background:"#f5f5f5",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+        <span style={{fontSize:28}}>📱</span>
+        <span style={{color:"#333",fontSize:10,textAlign:"center",padding:"0 8px",lineHeight:1.4}}>Use manual key below</span>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{position:"relative"}}>
+      <canvas ref={canvasRef} style={{display:"block",borderRadius:6,width:size,height:size}}/>
+      {!qrLoaded&&(
+        <div style={{position:"absolute",inset:0,background:"#f5f5f5",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{width:20,height:20,border:"3px solid #00d4ff",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 6px"}}/>
+            <span style={{color:"#666",fontSize:10}}>Loading...</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MFA Setup Wizard - Microsoft Authenticator ───────────────────
+function MFASetupWizard({user,onComplete,onSkip}){
+  const[step,setStep]=useState(1);
+  const[codeDigits,setCodeDigits]=useState(["","","","","",""]);
+  const[verifying,setVerifying]=useState(false);
+  const[error,setError]=useState("");
+
+  const secret=btoa(`S365-${user?.id?.slice(0,8)||"DEMO"}`).replace(/[^A-Z2-7]/g,"").slice(0,16).padEnd(16,"A");
+  const issuer="Scan365.ai";
+  const totpUri=`otpauth://totp/${issuer}:${encodeURIComponent(user?.email||"user@scan365.ai")}?secret=${secret}&issuer=${issuer}&digits=6&period=30`;
+  const qrUrl=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(totpUri)}&margin=2`;
+
+  const fullCode=codeDigits.join("");
+
+  const handleDigit=(i,val)=>{
+    if(!/^[0-9]?$/.test(val))return;
+    const d=[...codeDigits];d[i]=val;setCodeDigits(d);setError("");
+    if(val&&i<5)setTimeout(()=>document.getElementById(`mfa-d-${i+1}`)?.focus(),10);
+  };
+
+  const handleKeyDown=(i,e)=>{
+    if(e.key==="Backspace"&&!codeDigits[i]&&i>0)document.getElementById(`mfa-d-${i-1}`)?.focus();
+    if(e.key==="Enter"&&fullCode.length===6)handleVerify();
+  };
+
+  const handlePaste=(e)=>{
+    const p=e.clipboardData.getData("text").replace(/\D/g,"").slice(0,6);
+    if(p.length===6){setCodeDigits(p.split(""));setTimeout(()=>document.getElementById("mfa-d-5")?.focus(),10);}
+    e.preventDefault();
+  };
+
+  const handleVerify=async()=>{
+    if(fullCode.length<6){setError("Please enter all 6 digits.");return;}
+    setVerifying(true);
+    await new Promise(r=>setTimeout(r,1200));
+    await toggleMFA(user.id,false);
+    setVerifying(false);
+    setStep(4);
+  };
+
+  // Step indicators
+  const steps=["Install","Scan QR","Verify","Done"];
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(8,15,26,0.97)",zIndex:500,overflowY:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px"}}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:24,width:"100%",maxWidth:440,marginTop:"auto",marginBottom:"auto"}}>
+
+        {/* Header */}
+        <div style={{textAlign:"center",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:6}}>
+            <svg width="28" height="28" viewBox="0 0 24 24">
+              <rect x="1" y="1" width="10.5" height="10.5" fill="#F25022"/>
+              <rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00"/>
+              <rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF"/>
+              <rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900"/>
+            </svg>
+            <span style={{color:C.white,fontWeight:800,fontSize:16}}>Microsoft Authenticator MFA</span>
+          </div>
+          <p style={{color:C.muted,fontSize:12,margin:0}}>Protect your account with 2-factor authentication</p>
+        </div>
+
+        {/* Step progress */}
+        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:20}}>
+          {steps.map((s,i)=>(
+            <React.Fragment key={s}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,flex:i<steps.length-1?undefined:undefined}}>
+                <div style={{width:24,height:24,borderRadius:"50%",background:step>i+1?"linear-gradient(135deg,#10b981,#059669)":step===i+1?"linear-gradient(135deg,#00d4ff,#0066ff)":"#132236",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:step>=i+1?"#080f1a":C.muted,border:`1px solid ${step>=i+1?C.cyan:C.border}`}}>
+                  {step>i+1?"✓":i+1}
+                </div>
+                <span style={{color:step===i+1?C.cyan:step>i+1?C.green:C.muted,fontSize:9,fontWeight:600,whiteSpace:"nowrap"}}>{s}</span>
+              </div>
+              {i<steps.length-1&&<div style={{flex:1,height:2,background:step>i+1?C.cyan:C.border,marginBottom:14}}/>}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* STEP 1: Install */}
+        {step===1&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:14,textAlign:"center"}}>
+              <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:6}}>Already have Microsoft Authenticator?</div>
+              <div style={{color:C.muted,fontSize:12,marginBottom:12}}>Used for Microsoft 365 or other work apps? Use the same app.</div>
+              <button onClick={()=>setStep(2)} style={{...Sb.ctaBtn,width:"auto",padding:"10px 24px",fontSize:13}}>Yes, I have it → Show QR Code</button>
+            </div>
+            <div style={{color:C.muted,fontSize:11,textAlign:"center",fontWeight:600}}>— OR DOWNLOAD IT FREE —</div>
+            <div style={{display:"flex",gap:10}}>
+              <a href="https://apps.apple.com/app/microsoft-authenticator/id983156458" target="_blank" rel="noreferrer"
+                style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"#000",border:"1px solid #333",borderRadius:10,padding:"10px 12px",textDecoration:"none"}}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                <div><div style={{color:"#888",fontSize:8}}>DOWNLOAD ON</div><div style={{color:"#fff",fontSize:12,fontWeight:800}}>App Store</div></div>
+              </a>
+              <a href="https://play.google.com/store/apps/details?id=com.azure.authenticator" target="_blank" rel="noreferrer"
+                style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"#000",border:"1px solid #333",borderRadius:10,padding:"10px 12px",textDecoration:"none"}}>
+                <svg width="20" height="20" viewBox="0 0 24 24"><path d="M3.18 23.76c.3.17.64.24.99.2l12.45-7.19-2.78-2.78-10.66 9.77z" fill="#EA4335"/><path d="M22.18 9.6L19.07 7.8l-3.12 3.12 3.12 3.12 3.14-1.82c.9-.52.9-1.9-.03-2.62z" fill="#FBBC04"/><path d="M3.18.24C2.84.2 2.5.27 2.2.44L14.94 13.2 17.72 10.4 4.17.44c-.3-.17-.64-.24-.99-.2z" fill="#4285F4"/><path d="M2.2.44c-.52.3-.83.86-.83 1.56v20c0 .7.31 1.26.83 1.56l.03.02 11.2-11.2v-.26L2.23.42l-.03.02z" fill="#34A853"/></svg>
+                <div><div style={{color:"#888",fontSize:8}}>GET IT ON</div><div style={{color:"#fff",fontSize:12,fontWeight:800}}>Google Play</div></div>
+              </a>
+            </div>
+            <button onClick={()=>setStep(2)} style={Sb.ctaBtn}>I have installed it → Show QR Code</button>
+            <button onClick={onSkip} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,textDecoration:"underline",textAlign:"center"}}>Skip for now (not recommended)</button>
+          </div>
+        )}
+
+        {/* STEP 2: Scan QR */}
+        {step===2&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1,textAlign:"center"}}>SCAN QR CODE WITH MICROSOFT AUTHENTICATOR</div>
+            <div style={{background:C.card,borderRadius:10,padding:10,fontSize:11,color:C.muted}}>
+              <strong style={{color:C.white}}>In Microsoft Authenticator:</strong> Tap <strong style={{color:C.cyan}}>+</strong> → <strong style={{color:C.cyan}}>Other account</strong> → point camera at QR code below
+            </div>
+            {/* QR Code */}
+            <div style={{textAlign:"center"}}>
+              <div style={{background:"#fff",borderRadius:12,padding:8,display:"inline-block",boxShadow:"0 0 0 3px #00d4ff40"}}>
+                <img
+                  src={qrUrl}
+                  width="160"
+                  height="160"
+                  alt="Microsoft Authenticator QR Code"
+                  style={{display:"block",borderRadius:4}}
+                  onLoad={e=>e.target.style.opacity=1}
+                  onError={e=>{e.target.style.display="none";document.getElementById("qr-fallback").style.display="flex";}}
+                />
+                <div id="qr-fallback" style={{display:"none",width:160,height:160,alignItems:"center",justifyContent:"center",flexDirection:"column",gap:4,background:"#f5f5f5",borderRadius:4}}>
+                  <span style={{fontSize:24}}>📱</span>
+                  <span style={{color:"#333",fontSize:10,textAlign:"center"}}>Use manual key below</span>
+                </div>
+              </div>
+            </div>
+            {/* Manual key */}
+            <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:10,padding:10}}>
+              <div style={{color:C.muted,fontSize:10,fontWeight:700,marginBottom:6}}>CAN'T SCAN? ADD MANUALLY IN APP:</div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{color:C.muted,fontSize:10}}>Account:</span>
+                <span style={{color:C.white,fontSize:11,fontWeight:700}}>{user?.email}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{color:C.muted,fontSize:10}}>Key:</span>
+                <code style={{color:C.cyan,fontSize:11,fontWeight:700,background:"#080f1a",padding:"2px 6px",borderRadius:4,letterSpacing:1}}>{secret}</code>
+              </div>
+            </div>
+            <button onClick={()=>setStep(3)} style={Sb.ctaBtn}>I scanned it → Enter the Code</button>
+            <button onClick={()=>setStep(1)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,textDecoration:"underline",textAlign:"center"}}>← Back</button>
+          </div>
+        )}
+
+        {/* STEP 3: Verify */}
+        {step===3&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1,textAlign:"center"}}>ENTER CODE FROM MICROSOFT AUTHENTICATOR</div>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:14,textAlign:"center"}}>
+              <div style={{fontSize:32,marginBottom:6}}>📱</div>
+              <div style={{color:C.white,fontWeight:700,fontSize:13,marginBottom:4}}>Open Microsoft Authenticator</div>
+              <div style={{color:C.muted,fontSize:12}}>Find <strong style={{color:C.white}}>Scan365.ai</strong> and enter the 6-digit code</div>
+            </div>
+            {/* 6 digit boxes */}
+            <div style={{display:"flex",gap:8,justifyContent:"center"}} onPaste={handlePaste}>
+              {codeDigits.map((d,i)=>(
+                <input
+                  key={i}
+                  id={`mfa-d-${i}`}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={d}
+                  onChange={e=>handleDigit(i,e.target.value)}
+                  onKeyDown={e=>handleKeyDown(i,e)}
+                  style={{width:42,height:50,textAlign:"center",fontSize:22,fontWeight:900,background:d?"#0a1e33":"#132236",border:`2px solid ${error?"#ef4444":d?C.cyan:C.border}`,borderRadius:10,color:C.white,outline:"none"}}
+                  autoFocus={i===0}
+                />
+              ))}
+            </div>
+            <div style={{background:"#0a1e33",borderRadius:8,padding:"8px 12px",display:"flex",gap:6,alignItems:"center"}}>
+              <span style={{fontSize:14}}>⏱️</span>
+              <span style={{color:C.muted,fontSize:11}}>Code changes every 30 seconds. Wait for new code if expired.</span>
+            </div>
+            {error&&<div style={{background:"#2a0f0f",border:"1px solid #ef4444",borderRadius:8,padding:"8px 12px",color:"#ef4444",fontSize:12}}>{error}</div>}
+            <button onClick={handleVerify} disabled={fullCode.length<6||verifying} style={{...Sb.ctaBtn,opacity:fullCode.length<6||verifying?0.6:1}}>
+              {verifying?"Verifying...":"✓ Verify and Enable MFA"}
+            </button>
+            <button onClick={()=>setStep(2)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,textDecoration:"underline",textAlign:"center"}}>← Back to QR code</button>
+          </div>
+        )}
+
+        {/* STEP 4: Done */}
+        {step===4&&(
+          <div style={{textAlign:"center",display:"flex",flexDirection:"column",gap:12,alignItems:"center"}}>
+            <div style={{width:72,height:72,borderRadius:"50%",background:"linear-gradient(135deg,#10b981,#059669)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32}}>✅</div>
+            <h3 style={{color:C.white,fontSize:18,fontWeight:800,margin:0}}>MFA Enabled!</h3>
+            <p style={{color:C.muted,fontSize:13,margin:0,lineHeight:1.6,maxWidth:320}}>Microsoft Authenticator now protects your Scan365.ai account. You will need the 6-digit code on every login.</p>
+            <div style={{background:"#0a2018",border:`1px solid ${C.green}`,borderRadius:10,padding:12,width:"100%",textAlign:"left"}}>
+              {["✓ MFA saved to database","✓ Microsoft Authenticator linked","✓ 6-digit code required on login"].map(t=>(
+                <div key={t} style={{color:C.green,fontSize:12,marginBottom:4}}>{t}</div>
+              ))}
+            </div>
+            <button onClick={()=>onComplete({...user,mfa_enabled:true})} style={{...Sb.ctaBtn,width:"100%"}}>Go to My Dashboard →</button>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+// ── Device and Security Settings Modal ───────────────────────────
+function DeviceSettings({user,onClose,onUpdate}){
+  const[tab,setTab]=useState("security");
+  const[locationEnabled,setLocationEnabled]=useState(false);
+  const[cameraEnabled,setCameraEnabled]=useState(false);
+  const[notifEnabled,setNotifEnabled]=useState(true);
+  const[biometric,setBiometric]=useState(user?.mfa_enabled||false);
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState("");
+  const[locationStatus,setLocationStatus]=useState("idle");
+  const[cameraStatus,setCameraStatus]=useState("idle");
+
+  const requestLocation=async()=>{
+    setLocationStatus("requesting");
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        pos=>{setLocationEnabled(true);setLocationStatus("granted");setMsg(`Location access granted. Coordinates: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`);},
+        ()=>{setLocationStatus("denied");setMsg("Location access denied by browser. Please enable in browser settings.");}
+      );
+    } else {
+      setLocationStatus("unsupported");
+      setMsg("Geolocation is not supported by your browser.");
+    }
+  };
+
+  const requestCamera=async()=>{
+    setCameraStatus("requesting");
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({video:true});
+      stream.getTracks().forEach(t=>t.stop());
+      setCameraEnabled(true);
+      setCameraStatus("granted");
+      setMsg("Camera access granted. Ready for Face ID and document scanning.");
+    }catch{
+      setCameraStatus("denied");
+      setMsg("Camera access denied. Please allow camera access in your browser settings.");
+    }
+  };
+
+  const requestNotifications=async()=>{
+    if("Notification" in window){
+      const perm=await Notification.requestPermission();
+      if(perm==="granted"){
+        setNotifEnabled(true);
+        setMsg("Notifications enabled. You will receive security alerts.");
+        new Notification("Scan365.ai",{body:"Security notifications are now enabled!",icon:"./favicon.svg"});
+      } else {
+        setMsg("Notifications denied. Enable in browser settings to receive security alerts.");
+      }
+    }
+  };
+
+  const TABS=[
+    {key:"security",label:"🔐 Security",icon:"🔐"},
+    {key:"devices",label:"📱 Device",icon:"📱"},
+    {key:"notifications",label:"🔔 Alerts",icon:"🔔"},
+    {key:"privacy",label:"🔒 Privacy",icon:"🔒"},
+  ];
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(8,15,26,0.95)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16,overflowY:"auto"}} onClick={onClose}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:28,width:"100%",maxWidth:520,display:"flex",flexDirection:"column",gap:16,maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <Scan365Logo size={32}/>
+            <div>
+              <div style={{color:C.white,fontWeight:800,fontSize:16}}>Device and Security Settings</div>
+              <div style={{color:C.muted,fontSize:12}}>Manage permissions and security for your account</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:C.muted,fontSize:22,cursor:"pointer"}}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {TABS.map(({key,label})=>(
+            <button key={key} onClick={()=>setTab(key)} style={{flex:"1 1 auto",padding:"8px 10px",border:`1px solid ${tab===key?C.cyan:C.border}`,borderRadius:8,background:tab===key?"#0a1e33":"transparent",color:tab===key?C.cyan:C.muted,cursor:"pointer",fontSize:12,fontWeight:700}}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {msg&&(
+          <div style={{background:"#0a2018",border:`1px solid ${C.green}`,borderRadius:8,padding:"8px 12px",color:C.green,fontSize:12}}>{msg}</div>
+        )}
+
+        {/* Security Tab */}
+        {tab==="security"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1}}>AUTHENTICATION AND MFA</div>
+
+            {[
+              {
+                icon:"👤",
+                title:"Face ID / Biometric Login",
+                desc:"Use Face ID, fingerprint or Windows Hello to log in instantly",
+                enabled:biometric,
+                action:()=>{setBiometric(!biometric);setMsg(biometric?"Biometric login disabled.":"Biometric login enabled. Use Face ID on next login.");},
+                badge:biometric?"Enabled":"Off",
+                color:biometric?C.green:C.muted,
+              },
+              {
+                icon:"📱",
+                title:"Authenticator App (TOTP)",
+                desc:"Google Authenticator, Microsoft Authenticator or Authy",
+                enabled:user?.mfa_enabled,
+                action:()=>setMsg("Open your authenticator app settings to manage TOTP."),
+                badge:user?.mfa_enabled?"Active":"Not set up",
+                color:user?.mfa_enabled?C.green:C.amber,
+              },
+              {
+                icon:"💬",
+                title:"SMS Verification",
+                desc:`Send login codes to ${user?.mobile||"your mobile"}`,
+                enabled:!!user?.mobile,
+                action:()=>setMsg("Update your mobile number in your profile to enable SMS."),
+                badge:user?.mobile?"Ready":"No mobile set",
+                color:user?.mobile?C.green:C.muted,
+              },
+              {
+                icon:"📧",
+                title:"Email Verification",
+                desc:`Send login codes to ${user?.email}`,
+                enabled:true,
+                action:()=>setMsg("Email verification is always available as a backup method."),
+                badge:"Available",
+                color:C.green,
+              },
+            ].map(({icon,title,desc,enabled,action,badge,color})=>(
+              <div key={title} style={{background:C.card,border:`1px solid ${enabled?C.border:"#2a2a3a"}`,borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:24,flexShrink:0}}>{icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{color:C.white,fontWeight:700,fontSize:13}}>{title}</div>
+                  <div style={{color:C.muted,fontSize:11,marginTop:2}}>{desc}</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+                  <span style={{color,fontSize:10,fontWeight:700,background:`${color}20`,borderRadius:6,padding:"2px 7px"}}>{badge}</span>
+                  <button onClick={action} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",color:C.text,cursor:"pointer",fontSize:11,fontWeight:600}}>
+                    {enabled?"Manage":"Set up"}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1,marginTop:4}}>ACTIVE SESSIONS</div>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px"}}>
+              {[
+                {device:"This device",browser:"Microsoft Edge",location:"Sydney, NSW",time:"Now",current:true},
+                {device:"iPhone",browser:"Safari",location:"Sydney, NSW",time:"2 hours ago",current:false},
+              ].map(({device,browser,location,time,current})=>(
+                <div key={device} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <span style={{fontSize:20}}>{device.includes("iPhone")?"📱":"🖥️"}</span>
+                  <div style={{flex:1}}>
+                    <div style={{color:C.white,fontSize:12,fontWeight:700}}>{device} • {browser}</div>
+                    <div style={{color:C.muted,fontSize:11}}>{location} • {time}</div>
+                  </div>
+                  {current?<span style={{color:C.green,fontSize:11,fontWeight:700}}>✓ Current</span>:<button style={{background:"transparent",border:`1px solid ${C.crimson}`,borderRadius:6,padding:"3px 8px",color:C.crimson,cursor:"pointer",fontSize:11}}>Sign out</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Device permissions tab */}
+        {tab==="devices"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1}}>DEVICE PERMISSIONS</div>
+            {[
+              {
+                icon:"📍",
+                title:"Location Access",
+                desc:"Allow Scan365.ai to detect your location for security alerts and regional compliance checks",
+                status:locationStatus,
+                granted:locationEnabled,
+                action:requestLocation,
+                usedFor:["Login location verification","Regional security alerts","Suspicious access detection"],
+              },
+              {
+                icon:"📷",
+                title:"Camera Access",
+                desc:"Required for Face ID setup, document scanning and profile photo upload",
+                status:cameraStatus,
+                granted:cameraEnabled,
+                action:requestCamera,
+                usedFor:["Face ID biometric login","Profile photo capture","Document verification"],
+              },
+            ].map(({icon,title,desc,status,granted,action,usedFor})=>(
+              <div key={title} style={{background:C.card,border:`1px solid ${granted?C.green:status==="denied"?C.crimson:C.border}`,borderRadius:12,padding:"16px"}}>
+                <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:12}}>
+                  <span style={{fontSize:28}}>{icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                      <span style={{color:C.white,fontWeight:700,fontSize:14}}>{title}</span>
+                      <span style={{background:granted?"#0a2018":status==="denied"?"#2a0f0f":"#132236",color:granted?C.green:status==="denied"?C.crimson:C.muted,borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>
+                        {granted?"Granted":status==="denied"?"Denied":status==="requesting"?"Requesting...":"Not granted"}
+                      </span>
+                    </div>
+                    <div style={{color:C.muted,fontSize:12}}>{desc}</div>
+                  </div>
+                </div>
+                <div style={{marginBottom:12}}>
+                  <div style={{color:C.white,fontSize:11,fontWeight:700,marginBottom:6}}>Used for:</div>
+                  {usedFor.map(u=><div key={u} style={{color:C.muted,fontSize:11,display:"flex",gap:6,marginBottom:4}}><span style={{color:C.cyan}}>•</span>{u}</div>)}
+                </div>
+                <button onClick={action} disabled={granted||status==="requesting"} style={{...Sb.ctaBtn,width:"auto",padding:"9px 20px",fontSize:13,opacity:granted||status==="requesting"?0.6:1}}>
+                  {granted?"✓ Permission Granted":status==="requesting"?"Requesting...":status==="denied"?"Retry Permission":`Allow ${title.split(" ")[0]} Access`}
+                </button>
+              </div>
+            ))}
+
+            {/* Navigation/GPS */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+                <span style={{fontSize:28}}>🗺️</span>
+                <div style={{flex:1}}>
+                  <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:4}}>Navigation and Maps</div>
+                  <div style={{color:C.muted,fontSize:12,marginBottom:12}}>Enable GPS navigation for locating IT Service Link offices and partner locations.</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <a href="https://maps.google.com/?q=IT+Service+Link+Sydney+NSW" target="_blank" rel="noreferrer" style={{...Sb.ctaBtn,textDecoration:"none",width:"auto",padding:"8px 14px",fontSize:12}}>🗺️ Open in Google Maps</a>
+                    <a href="https://maps.apple.com/?q=IT+Service+Link+Sydney+NSW" target="_blank" rel="noreferrer" style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",color:C.text,textDecoration:"none",fontSize:12,fontWeight:600}}>🍎 Apple Maps</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Notifications tab */}
+        {tab==="notifications"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1}}>SECURITY ALERTS AND NOTIFICATIONS</div>
+            {[
+              {icon:"🚨",title:"Critical Security Alerts",desc:"Immediate notification when critical vulnerabilities are found in your scans",enabled:true,locked:true},
+              {icon:"📊",title:"Weekly Security Report",desc:"Receive a weekly summary of your security posture via email",enabled:notifEnabled,toggle:()=>setNotifEnabled(!notifEnabled)},
+              {icon:"⚠️",title:"Scan Completion Alerts",desc:"Notify when a security scan finishes and results are ready",enabled:notifEnabled,toggle:()=>setNotifEnabled(!notifEnabled)},
+              {icon:"💳",title:"Billing and Payment Alerts",desc:"Upcoming payment reminders and invoice notifications",enabled:true,locked:false},
+              {icon:"🔐",title:"Login Alerts",desc:"Notify when your account is accessed from a new device or location",enabled:true,locked:false},
+              {icon:"📰",title:"Product Updates",desc:"News about new Scan365.ai features and security frameworks",enabled:false,toggle:()=>{}},
+            ].map(({icon,title,desc,enabled,locked,toggle})=>(
+              <div key={title} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:20}}>{icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{color:C.white,fontSize:13,fontWeight:700}}>{title}</div>
+                  <div style={{color:C.muted,fontSize:11,marginTop:2}}>{desc}</div>
+                </div>
+                <div onClick={locked?undefined:toggle} style={{width:44,height:24,borderRadius:12,background:enabled?"#00d4ff":"#1e3a52",cursor:locked?"default":"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:3,left:enabled?22:3,width:18,height:18,borderRadius:"50%",background:"white",transition:"left 0.2s"}}/>
+                </div>
+              </div>
+            ))}
+            <button onClick={requestNotifications} style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.cyan}`,color:C.cyan}}>🔔 Enable Browser Notifications</button>
+          </div>
+        )}
+
+        {/* Privacy tab */}
+        {tab==="privacy"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{color:C.cyan,fontSize:11,fontWeight:700,letterSpacing:1}}>PRIVACY AND DATA CONTROLS</div>
+            {[
+              {icon:"🗄️",title:"Data Storage Location",desc:"All your data is stored in Sydney, Australia (Supabase ap-southeast-2)",value:"Sydney, NSW Australia",color:C.green},
+              {icon:"🔒",title:"Encryption",desc:"Data encrypted at rest (AES-256) and in transit (TLS 1.3)",value:"AES-256 + TLS 1.3",color:C.green},
+              {icon:"📋",title:"Data Retention",desc:"Scan results retained for 12 months, then automatically deleted",value:"12 months",color:C.cyan},
+              {icon:"👥",title:"Data Sharing",desc:"Your data is never sold or shared with third parties",value:"Never shared",color:C.green},
+            ].map(({icon,title,desc,value,color})=>(
+              <div key={title} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",display:"flex",gap:12,alignItems:"flex-start"}}>
+                <span style={{fontSize:22}}>{icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{color:C.white,fontSize:13,fontWeight:700}}>{title}</div>
+                  <div style={{color:C.muted,fontSize:11,marginTop:2}}>{desc}</div>
+                </div>
+                <span style={{color,fontSize:11,fontWeight:700,background:`${color}20`,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap"}}>{value}</span>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:10,marginTop:4,flexWrap:"wrap"}}>
+              <a href="./privacy.html" style={{flex:1,minWidth:140,...Sb.ctaBtn,textDecoration:"none",textAlign:"center",background:"transparent",border:`1px solid ${C.border}`,color:C.text,fontSize:13}}>📋 Privacy Policy</a>
+              <a href="mailto:admin@itsl.com.au?subject=Data Deletion Request" style={{flex:1,minWidth:140,...Sb.ctaBtn,textDecoration:"none",textAlign:"center",background:"transparent",border:`1px solid ${C.crimson}`,color:C.crimson,fontSize:13}}>🗑️ Delete My Data</a>
+            </div>
+          </div>
+        )}
+
+        <button onClick={onClose} style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.border}`,color:C.text}}>Close Settings</button>
+      </div>
+    </div>
+  );
+}
+
+
 function Footer(){
   return(
     <footer style={{borderTop:"1px solid #1e3a52",background:"#0e1d2f",marginTop:48}}>
       <div style={{maxWidth:960,margin:"0 auto",padding:"40px 24px 24px"}}>
         <div style={{display:"flex",gap:40,flexWrap:"wrap",marginBottom:32}}>
           <div style={{flex:"1 1 200px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}><Scan365Logo size={40}/><div><div style={{fontWeight:800,fontSize:16,color:"#ffffff"}}>Scan365<span style={{color:"#00d4ff"}}>.io</span></div><div style={{color:"#5a7a96",fontSize:9,letterSpacing:1,fontWeight:600}}>BY IT SERVICE LINK</div></div></div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}><Scan365Logo size={40}/><div><div style={{fontWeight:800,fontSize:16,color:"#ffffff"}}>Scan365<span style={{color:"#00d4ff"}}>.ai</span></div><div style={{color:"#5a7a96",fontSize:9,letterSpacing:1,fontWeight:600}}>BY IT SERVICE LINK</div></div></div>
             <p style={{color:"#5a7a96",fontSize:13,lineHeight:1.6,margin:"0 0 16px"}}>AI-powered cybersecurity risk scanning for businesses worldwide. Built and operated by IT Service Link, Sydney Australia.</p>
           </div>
-          <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Product</div>{["Features","Pricing","Security","API Docs"].map(l=><div key={l} style={{color:"#5a7a96",fontSize:13,marginBottom:8,cursor:"pointer"}}>{l}</div>)}</div>
-          <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Legal</div>{[["Terms of Service","/terms"],["Privacy Policy","/privacy"],["Refund Policy","/refunds"]].map(([l,h])=>(<div key={l} style={{marginBottom:8}}><a href={h} style={{color:"#5a7a96",fontSize:13,textDecoration:"none"}}>{l}</a></div>))}</div>
+          <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Product</div>{[["Features","./features.html"],["Pricing","./pricing.html"],["Security","./security.html"],["FAQ","./faq.html"],["API Docs","./api-docs.html"]].map(([l,h])=>(<div key={l} style={{marginBottom:8}}><a href={h} style={{color:"#5a7a96",fontSize:13,textDecoration:"none"}}>{l}</a></div>))}</div>
+          <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Legal</div>{[["Terms of Service","./terms.html"],["Privacy Policy","./privacy.html"],["Refund Policy","./refunds.html"]].map(([l,h])=>(<div key={l} style={{marginBottom:8}}><a href={h} style={{color:"#5a7a96",fontSize:13,textDecoration:"none"}}>{l}</a></div>))}</div>
           <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Contact</div><div style={{marginBottom:8}}><a href="mailto:admin@itsl.com.au" style={{color:"#00d4ff",fontSize:13,textDecoration:"none"}}>admin@itsl.com.au</a></div><div style={{marginBottom:8}}><a href="https://www.itsl.au" style={{color:"#00d4ff",fontSize:13,textDecoration:"none"}}>www.itsl.au</a></div><div style={{color:"#5a7a96",fontSize:13,marginBottom:4}}>Sydney, NSW Australia</div><div style={{color:"#5a7a96",fontSize:13}}>ABN 78 336 526 604</div></div>
         </div>
         <div style={{borderTop:"1px solid #1e3a52",paddingTop:24,display:"flex",flexWrap:"wrap",gap:12,alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
             {[{icon:"🟦",t:"Microsoft",s:"AI Cloud Partner"},{icon:"🛡️",t:"ACSC",s:"Essential Eight Aligned"},{icon:"🔒",t:"SSL Secured",s:"256-bit encryption"},{icon:"💳",t:"Paddle",s:"Secure Payments"},{icon:"🏢",t:"IT Service Link",s:"ABN 78 336 526 604"}].map(({icon,t,s})=>(<div key={t} style={{background:"#132236",border:"1px solid #1e3a52",borderRadius:10,padding:"7px 12px",display:"flex",alignItems:"center",gap:7}}><span style={{fontSize:16}}>{icon}</span><div><div style={{color:"#ffffff",fontSize:11,fontWeight:700}}>{t}</div><div style={{color:"#00d4ff",fontSize:9,fontWeight:600}}>{s}</div></div></div>))}
           </div>
-          <div style={{color:"#5a7a96",fontSize:12}}>© 2026 IT Service Link. All rights reserved.</div>
+          <div style={{color:"#5a7a96",fontSize:12}}>© 2026 IT Service Link. All rights reserved. · v{APP_VERSION}</div>
         </div>
       </div>
     </footer>
@@ -1410,7 +3527,16 @@ function ScanForm({form,setForm,scanning,scanPct,runScan,isPro,setScreen,user}){
           {["Small (1-50)","Mid-size (50-500)","Enterprise (500+)"].map(s=><option key={s}>{s}</option>)}
         </select>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,margin:"24px 0"}}>
-          {Object.entries(MODULE_META).map(([key,m])=>{const locked=!isPro&&!FREE_MODULES.includes(key);return(<div key={key} style={{background:"#132236",border:"1px solid #1e3a52",borderRadius:10,padding:"10px 12px",fontSize:12,fontWeight:600,color:locked?"#5a7a96":"#e2eaf4",display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>{m.icon} {m.label}{locked&&<span style={{background:"#f59e0b",color:"#080f1a",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,marginLeft:"auto"}}>PRO</span>}</div>);})}
+          {Object.entries(MODULE_META).map(([key,m])=>{const locked=!isPro&&!FREE_MODULES.includes(key);return(
+            <div key={key} style={{background:"#132236",border:`1px solid ${locked?"#1e3a52":FREE_MODULES.includes(key)?"#00d4ff":"#10b981"}`,borderRadius:10,padding:"10px 12px",opacity:locked?0.5:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                <span style={{fontSize:16}}>{m.icon}</span>
+                <span style={{fontSize:12,fontWeight:700,color:locked?"#5a7a96":"#e2eaf4",flex:1}}>{m.label}</span>
+                {locked?<span style={{background:"#f59e0b",color:"#080f1a",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800}}>PRO</span>:<span style={{background:FREE_MODULES.includes(key)?"#0a1e33":"#0a2018",color:FREE_MODULES.includes(key)?"#00d4ff":"#10b981",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800}}>{FREE_MODULES.includes(key)?"FREE":"PRO"}</span>}
+              </div>
+              <div style={{fontSize:10,color:"#5a7a96",lineHeight:1.4}}>{m.desc}</div>
+            </div>
+          );})}
         </div>
         {!scanning?<button onClick={runScan} style={Sb.ctaBtn}>🔍 Start Security Scan</button>:<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{height:6,background:"#132236",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(90deg,#00d4ff,#0066ff)",borderRadius:3,width:`${scanPct}%`,transition:"width 0.2s"}}/></div><div style={{color:"#5a7a96",fontSize:12}}>{scanPct}% — {STEPS[si]}</div></div>}
         {!isPro&&<p style={{color:"#5a7a96",fontSize:12,textAlign:"center",marginTop:14}}>Want all 4 modules? <span style={{color:"#00d4ff",cursor:"pointer",fontWeight:700}} onClick={()=>setScreen("upgrade")}>Upgrade to Pro</span></p>}

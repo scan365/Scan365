@@ -290,6 +290,16 @@ export async function pushToPro(userId) {
   return { success: true };
 }
 
+export async function cancelPro(userId) {
+  const { error } = await supabase
+    .from('users')
+    .update({ plan: 'free', plan_expires_at: null, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+  if (error) return { error: error.message };
+  await logAudit(userId, 'admin_cancelled_pro', 'users', userId, {});
+  return { success: true };
+}
+
 // ================================================================
 // AUDIT LOG
 // ================================================================
@@ -326,8 +336,18 @@ export async function checkMonthlyReset(user) {
 
 // Step 1: Request password reset - generates a token and saves it
 export async function requestPasswordReset(email) {
-  const user = await getUser(email);
-  if (!user) return { error: 'No account found with this email address.' };
+  const user = await getUser(email.toLowerCase().trim());
+  if (!user) return { error: 'No account found with this email address. Please check the email or sign up.' };
+
+  // If OAuth account, tell user to sign in with their provider
+  if (user.auth_provider && user.auth_provider !== 'email') {
+    const provider = user.auth_provider.charAt(0).toUpperCase() + user.auth_provider.slice(1);
+    return { 
+      error: `This email is linked to ${provider} sign-in. Please use the ${provider} button to sign in instead of a password reset.`,
+      isOAuth: true,
+      provider: user.auth_provider
+    };
+  }
 
   // Generate a 6-digit reset code
   const resetCode = Math.floor(100000 + Math.random() * 900000).toString();

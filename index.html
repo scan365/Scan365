@@ -1,10 +1,37 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>scan365</title>
+    <title>Scan365.ai | AI Cybersecurity Risk Scanner</title>
+    <meta name="description" content="AI-powered cybersecurity risk scanning for Australian businesses." />
+    <style>
+      body { margin: 0; background: #080f1a; }
+      @keyframes spin { from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+      @keyframes starPulse {
+        0%,100%{transform:scale(1) rotate(0deg);opacity:1;filter:drop-shadow(0 0 6px #f59e0b);}
+        25%{transform:scale(1.2) rotate(5deg);opacity:0.8;filter:drop-shadow(0 0 14px #f59e0b);}
+        50%{transform:scale(0.95) rotate(-3deg);opacity:1;filter:drop-shadow(0 0 20px #fff);}
+        75%{transform:scale(1.15) rotate(3deg);opacity:0.9;filter:drop-shadow(0 0 10px #f59e0b);}
+      }
+      @keyframes badgeGlow {
+        0%,100%{box-shadow:0 0 8px 2px #f59e0b88,0 0 0 0 #f59e0b44;}
+        50%{box-shadow:0 0 20px 6px #f59e0bcc,0 0 30px 10px #f59e0b22;}
+      }
+      @keyframes textFlash {
+        0%,100%{color:#f59e0b;}
+        50%{color:#ffffff;}
+      }
+      @keyframes radarSweep {
+        from{transform:rotate(0deg);}
+        to{transform:rotate(360deg);}
+      }
+      @keyframes pulse {
+        0%,100%{opacity:1;}
+        50%{opacity:0.5;}
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
