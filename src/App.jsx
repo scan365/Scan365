@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.20";
+const APP_VERSION="260725.21";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -3666,53 +3666,235 @@ function ScanForm({form,setForm,scanning,scanPct,scanStatus,runScan,isPro,setScr
 // ── Results ───────────────────────────────────────────────────────
 function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
   const[pdfDone,setPdfDone]=useState(false);
-  const mod=results.modules[activeModule];
-  const locked=!isPro&&!FREE_MODULES.includes(activeModule);
-  const critCount=Object.values(results.modules).flatMap(m=>m.findings).filter(f=>f.sev==="critical").length;
+  const[showReportModal,setShowReportModal]=useState(false);
+
+  // Support both old format (results.modules) and new real scan format (results.website/email)
+  const overallScore=results.overall_score??results.overallScore??0;
+  const websiteScore=results.website_score??results.modules?.website?.score??0;
+  const phishingScore=results.phishing_score??results.modules?.phishing?.score??0;
+  const domain=results.domain??"";
+  const scannedAt=results.scanned_at??results.scannedAt??"";
+  const riskLevel=results.risk_level??scoreLabel(overallScore);
+
+  // Merge findings from real API or old format
+  const allFindings=[
+    ...(results.findings||[]),
+    ...(results.website?.findings||[]),
+    ...(results.email?.findings||[]),
+    ...(results.modules?.website?.findings||[]),
+    ...(results.modules?.phishing?.findings||[]),
+  ].filter((f,i,arr)=>arr.findIndex(x=>x.title===f.title)===i); // deduplicate
+
+  const critCount=allFindings.filter(f=>f.severity==="critical"||f.sev==="critical").length;
+  const highCount=allFindings.filter(f=>f.severity==="high"||f.sev==="high").length;
+  const passCount=allFindings.filter(f=>f.severity==="pass"||f.sev==="pass").length;
+
   const handlePDF=()=>{generatePDF(results,isPro,user?.name);setPdfDone(true);setTimeout(()=>setPdfDone(false),3000);};
+
+  const severityColor=(sev)=>{
+    if(sev==="critical")return C.crimson;
+    if(sev==="high")return C.amber;
+    if(sev==="medium")return "#f59e0b";
+    if(sev==="low")return C.muted;
+    if(sev==="pass")return C.green;
+    if(sev==="info")return C.cyan;
+    return C.muted;
+  };
+
+  const severityIcon=(sev)=>{
+    if(sev==="critical")return "🔴";
+    if(sev==="high")return "🟠";
+    if(sev==="medium")return "🟡";
+    if(sev==="low")return "🔵";
+    if(sev==="pass")return "✅";
+    if(sev==="info")return "ℹ️";
+    return "⚪";
+  };
+
   return(
-    <div style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 60px"}}>
+    <div style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
+
+      {/* Back button */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-        <button onClick={()=>setScreen("dashboard")} style={{background:"transparent",border:"none",color:"#5a7a96",cursor:"pointer",fontSize:20}}>←</button>
-        <span style={{color:"#5a7a96",fontSize:14}}>Back to Dashboard</span>
+        <button onClick={()=>setScreen("dashboard")} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>←</button>
+        <span style={{color:C.muted,fontSize:14}}>Back to Dashboard</span>
       </div>
-      <div style={{background:"#0e1d2f",border:"1px solid #1e3a52",borderRadius:16,padding:"20px 24px",display:"flex",gap:24,flexWrap:"wrap",alignItems:"center",marginBottom:20}}>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:90}}>
-          <div style={{fontSize:54,fontWeight:900,lineHeight:1,color:scoreColor(results.overallScore)}}>{results.overallScore}</div>
-          <div style={{color:"#5a7a96",fontSize:13}}>/100</div>
-          <div style={{color:scoreColor(results.overallScore),fontWeight:700,fontSize:12,marginTop:2}}>{scoreLabel(results.overallScore)}</div>
-        </div>
-        <div style={{flex:1,display:"flex",flexDirection:"column",gap:7}}>
-          {[["Website domain",results.domain],["M365 Tenant",results.m365domain||"Not specified"],["Scanned",results.scannedAt],["Critical issues",`${critCount} found`]].map(([k,v])=>(<div key={k} style={{display:"flex",gap:10,fontSize:13}}><span style={{color:"#5a7a96",minWidth:120}}>{k}</span><span style={{color:k==="Critical issues"?"#ef4444":"#e2eaf4",fontWeight:k==="Critical issues"?700:600}}>{v}</span></div>))}
-        </div>
-        <div style={{display:"flex",gap:8,flexDirection:"column",minWidth:160}}>
-          <button style={Sb.ctaBtn} onClick={()=>setScreen("scan")}>New Scan</button>
-          {!isPro&&<button style={{...Sb.ctaBtn,background:"transparent",border:"1px solid #1e3a52",color:"#e2eaf4",fontSize:13}} onClick={()=>setScreen("upgrade")}>🔓 Upgrade to Pro</button>}
-        </div>
-      </div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-        {Object.entries(MODULE_META).map(([key,m])=>{const isLocked=!isPro&&!FREE_MODULES.includes(key);const s=results.modules[key].score;return(<button key={key} onClick={()=>setActiveModule(key)} style={{background:activeModule===key?"#0a1e33":"#0e1d2f",border:`${activeModule===key?1.5:1}px solid ${activeModule===key?"#00d4ff":"#1e3a52"}`,borderRadius:12,padding:"12px 16px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,flex:"1 1 130px",opacity:isLocked?0.55:1}}><span style={{fontSize:20}}>{m.icon}</span><span style={{fontSize:11,fontWeight:600,color:"#e2eaf4"}}>{m.label}</span>{isLocked?<span style={{background:"#f59e0b",color:"#080f1a",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800}}>PRO</span>:<span style={{fontSize:13,fontWeight:800,color:scoreColor(s)}}>{s}/100</span>}</button>);})}
-      </div>
-      {locked?(
-        <div style={{background:"#0e1d2f",border:"1px solid #1e3a52",borderRadius:16,padding:48,textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
-          <div style={{fontSize:52}}>🔒</div>
-          <h3 style={{color:"#ffffff",fontSize:20,fontWeight:800,margin:0}}>{MODULE_META[activeModule].label} is a Pro feature</h3>
-          <p style={{color:"#5a7a96",fontSize:14,maxWidth:380,lineHeight:1.6,margin:0}}>Upgrade to Pro to unlock all 4 security modules.</p>
-          <button style={{...Sb.ctaBtn,maxWidth:280}} onClick={()=>setScreen("upgrade")}>Upgrade to Pro</button>
-        </div>
-      ):(
-        <div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <span style={{color:"#ffffff",fontSize:17,fontWeight:700}}>{MODULE_META[activeModule].icon} {MODULE_META[activeModule].label}</span>
-            <span style={{fontSize:14,fontWeight:800,color:scoreColor(mod.score)}}>Score: {mod.score}/100</span>
+
+      {/* Score card */}
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px 24px",marginBottom:20}}>
+        <div style={{display:"flex",gap:20,flexWrap:"wrap",alignItems:"center"}}>
+
+          {/* Big score circle */}
+          <div style={{width:90,height:90,borderRadius:"50%",border:`4px solid ${scoreColor(overallScore)}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0,background:"#0a1e33"}}>
+            <div style={{fontSize:28,fontWeight:900,color:scoreColor(overallScore),lineHeight:1}}>{overallScore}</div>
+            <div style={{color:C.muted,fontSize:10}}>/100</div>
           </div>
-          {mod.findings.map((f,i)=><FindingCard key={i} finding={f}/>)}
-          <div style={{display:"flex",gap:10,marginTop:18,flexWrap:"wrap"}}>
-            <button onClick={handlePDF} style={{flex:1,minWidth:160,padding:"12px",borderRadius:10,border:`1px solid ${pdfDone?"#10b981":"#1e3a52"}`,background:pdfDone?"#0a2018":"transparent",color:pdfDone?"#10b981":"#e2eaf4",cursor:"pointer",fontSize:13,fontWeight:600,transition:"all 0.3s"}}>
-              {pdfDone?"✓ PDF Downloaded!":"⬇ Download PDF Report"}
-              {!isPro&&<span style={{display:"block",fontSize:10,color:"#5a7a96",marginTop:2}}>Free basic report included</span>}
+
+          {/* Scan info */}
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{color:C.white,fontWeight:800,fontSize:18,marginBottom:4}}>{domain}</div>
+            <div style={{color:scoreColor(overallScore),fontWeight:700,fontSize:14,marginBottom:8}}>{riskLevel}</div>
+            <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+              <span style={{color:C.muted,fontSize:12}}>🌐 Website: <strong style={{color:scoreColor(websiteScore)}}>{websiteScore}/100</strong></span>
+              <span style={{color:C.muted,fontSize:12}}>📧 Phishing: <strong style={{color:scoreColor(phishingScore)}}>{phishingScore}/100</strong></span>
+              <span style={{color:C.muted,fontSize:12}}>📅 {new Date(scannedAt).toLocaleDateString("en-AU")}</span>
+            </div>
+          </div>
+
+          {/* Summary badges */}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {critCount>0&&<div style={{background:"#2a0f0f",border:`1px solid ${C.crimson}`,borderRadius:8,padding:"6px 12px",textAlign:"center"}}>
+              <div style={{color:C.crimson,fontWeight:900,fontSize:18}}>{critCount}</div>
+              <div style={{color:C.crimson,fontSize:10,fontWeight:700}}>CRITICAL</div>
+            </div>}
+            {highCount>0&&<div style={{background:"#2a1f0a",border:`1px solid ${C.amber}`,borderRadius:8,padding:"6px 12px",textAlign:"center"}}>
+              <div style={{color:C.amber,fontWeight:900,fontSize:18}}>{highCount}</div>
+              <div style={{color:C.amber,fontSize:10,fontWeight:700}}>HIGH</div>
+            </div>}
+            {passCount>0&&<div style={{background:"#0a2018",border:`1px solid ${C.green}`,borderRadius:8,padding:"6px 12px",textAlign:"center"}}>
+              <div style={{color:C.green,fontWeight:900,fontSize:18}}>{passCount}</div>
+              <div style={{color:C.green,fontSize:10,fontWeight:700}}>PASSED</div>
+            </div>}
+          </div>
+
+          {/* Action buttons */}
+          <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:160}}>
+            <button onClick={()=>setShowReportModal(true)}
+              style={{...Sb.ctaBtn,background:"linear-gradient(90deg,#00d4ff,#0066ff)"}}>
+              📊 View Full Report
             </button>
-            {!isPro&&<button style={{...Sb.ctaBtn,flex:1,minWidth:160}} onClick={()=>setScreen("upgrade")}>🔓 Unlock All Modules</button>}
+            <button onClick={handlePDF}
+              style={{...Sb.ctaBtn,background:pdfDone?"#0a2018":"transparent",border:`1px solid ${pdfDone?C.green:C.border}`,color:pdfDone?C.green:C.text}}>
+              {pdfDone?"✓ PDF Downloaded":"📄 Download PDF"}
+            </button>
+            <button onClick={()=>setScreen("scan")}
+              style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.border}`,color:C.muted,fontSize:12}}>
+              🔍 New Scan
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick findings preview */}
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,overflow:"hidden",marginBottom:16}}>
+        <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <span style={{color:C.white,fontWeight:700,fontSize:15}}>🔍 Security Findings ({allFindings.length})</span>
+          <button onClick={()=>setShowReportModal(true)}
+            style={{background:"transparent",border:`1px solid ${C.cyan}`,borderRadius:8,padding:"4px 12px",color:C.cyan,cursor:"pointer",fontSize:12,fontWeight:700}}>
+            View All →
+          </button>
+        </div>
+        <div style={{padding:16,display:"flex",flexDirection:"column",gap:8}}>
+          {allFindings.slice(0,5).map((f,i)=>(
+            <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"10px 12px",background:C.card,borderRadius:10,border:`1px solid ${C.border}`}}>
+              <span style={{fontSize:16,flexShrink:0}}>{severityIcon(f.severity||f.sev)}</span>
+              <div style={{flex:1}}>
+                <div style={{color:C.white,fontWeight:600,fontSize:13}}>{f.title}</div>
+                {f.detail&&<div style={{color:C.muted,fontSize:11,marginTop:3,lineHeight:1.5}}>{f.detail}</div>}
+              </div>
+              <span style={{color:severityColor(f.severity||f.sev),fontSize:10,fontWeight:700,textTransform:"uppercase",flexShrink:0,marginTop:2}}>
+                {f.severity||f.sev}
+              </span>
+            </div>
+          ))}
+          {allFindings.length===0&&(
+            <div style={{textAlign:"center",padding:24,color:C.muted}}>No findings available. Run a new scan to see results.</div>
+          )}
+          {allFindings.length>5&&(
+            <button onClick={()=>setShowReportModal(true)}
+              style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.border}`,color:C.muted,fontSize:12}}>
+              Show {allFindings.length-5} more findings →
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Pro upgrade prompt */}
+      {!isPro&&(
+        <div style={{background:"linear-gradient(135deg,#0a1e33,#132236)",border:`1px solid ${C.cyan}`,borderRadius:14,padding:"20px 24px",display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{flex:1}}>
+            <div style={{color:C.white,fontWeight:800,fontSize:16,marginBottom:6}}>🔓 Unlock Full Security Coverage</div>
+            <div style={{color:C.muted,fontSize:13}}>You scanned Website and Email security. Upgrade to Pro to also scan Microsoft 365 and ACSC Essential Eight compliance.</div>
+          </div>
+          <button onClick={()=>setScreen("upgrade")} style={{...Sb.ctaBtn,whiteSpace:"nowrap"}}>Upgrade to Pro →</button>
+        </div>
+      )}
+
+      {/* Full Report Modal */}
+      {showReportModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(8,15,26,0.96)",zIndex:400,overflowY:"auto",padding:"20px 16px"}}>
+          <div style={{maxWidth:760,margin:"0 auto"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div>
+                <div style={{color:C.white,fontWeight:800,fontSize:20}}>📊 Security Report</div>
+                <div style={{color:C.muted,fontSize:13}}>{domain} · {new Date(scannedAt).toLocaleDateString("en-AU")}</div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={handlePDF} style={{...Sb.ctaBtn,width:"auto",padding:"10px 20px"}}>
+                  📄 Download PDF
+                </button>
+                <button onClick={()=>setShowReportModal(false)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 16px",color:C.muted,cursor:"pointer",fontSize:14}}>
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            {/* Score summary */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:20,marginBottom:16,display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
+              <div style={{width:80,height:80,borderRadius:"50%",border:`4px solid ${scoreColor(overallScore)}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0a1e33",flexShrink:0}}>
+                <div style={{fontSize:24,fontWeight:900,color:scoreColor(overallScore)}}>{overallScore}</div>
+                <div style={{color:C.muted,fontSize:9}}>/100</div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{color:C.white,fontWeight:800,fontSize:16}}>{domain}</div>
+                <div style={{color:scoreColor(overallScore),fontWeight:700,fontSize:13,margin:"4px 0"}}>{riskLevel}</div>
+                <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                  <span style={{color:C.muted,fontSize:12}}>🌐 Website: <strong style={{color:scoreColor(websiteScore)}}>{websiteScore}/100</strong></span>
+                  <span style={{color:C.muted,fontSize:12}}>📧 Email: <strong style={{color:scoreColor(phishingScore)}}>{phishingScore}/100</strong></span>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                {[{label:"Critical",count:critCount,color:C.crimson},{label:"High",count:highCount,color:C.amber},{label:"Passed",count:passCount,color:C.green}].map(({label,count,color})=>(
+                  <div key={label} style={{textAlign:"center",background:C.card,borderRadius:8,padding:"8px 12px"}}>
+                    <div style={{color,fontWeight:900,fontSize:16}}>{count}</div>
+                    <div style={{color:C.muted,fontSize:10,fontWeight:700}}>{label.toUpperCase()}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* All findings */}
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {allFindings.map((f,i)=>(
+                <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
+                  <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:f.fix?10:0}}>
+                    <span style={{fontSize:18,flexShrink:0}}>{severityIcon(f.severity||f.sev)}</span>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <span style={{color:C.white,fontWeight:700,fontSize:14}}>{f.title}</span>
+                        <span style={{color:severityColor(f.severity||f.sev),fontSize:10,fontWeight:800,textTransform:"uppercase",background:C.card,borderRadius:5,padding:"2px 7px"}}>{f.severity||f.sev}</span>
+                      </div>
+                      {f.detail&&<div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>{f.detail}</div>}
+                    </div>
+                  </div>
+                  {f.fix&&(
+                    <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",marginTop:8}}>
+                      <div style={{color:C.cyan,fontSize:11,fontWeight:700,marginBottom:4}}>💡 HOW TO FIX:</div>
+                      <pre style={{color:C.text,fontSize:11,lineHeight:1.6,whiteSpace:"pre-wrap",fontFamily:"inherit",margin:0}}>{f.fix}</pre>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* ITSL contact */}
+            <div style={{background:"#0a1e33",border:`1px solid ${C.cyan}`,borderRadius:12,padding:16,marginTop:16,textAlign:"center"}}>
+              <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:6}}>Need help fixing these issues?</div>
+              <div style={{color:C.muted,fontSize:12,marginBottom:10}}>IT Service Link provides expert cybersecurity remediation services for Australian businesses.</div>
+              <a href="mailto:admin@itsl.com.au" style={{color:C.cyan,fontWeight:700,fontSize:13}}>admin@itsl.com.au</a>
+              <span style={{color:C.muted,fontSize:12}}> · </span>
+              <a href="https://www.itsl.au" style={{color:C.cyan,fontWeight:700,fontSize:13}}>www.itsl.au</a>
+            </div>
           </div>
         </div>
       )}
