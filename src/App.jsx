@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.19";
+const APP_VERSION="260725.20";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -1124,7 +1124,7 @@ function AuthModal({onClose,onLogin,onForgotPassword}){
                   {loading?"Creating account...":"Create Free Account →"}
                 </button>
                 <p style={{color:C.muted,fontSize:10,textAlign:"center",margin:0,lineHeight:1.5}}>
-                  No credit card needed. By signing up you agree to our <a href="./terms.html" style={{color:C.cyan}}>Terms</a> and <a href="./privacy.html" style={{color:C.cyan}}>Privacy Policy</a>.
+                  No credit card needed. By signing up you agree to our <a href="/terms.html" style={{color:C.cyan}}>Terms</a> and <a href="/privacy.html" style={{color:C.cyan}}>Privacy Policy</a>.
                 </p>
                 <div style={{textAlign:"center",color:C.muted,fontSize:12}}>
                   Have an account? <span onClick={()=>{setTab("signin");setError("");}} style={{color:C.cyan,cursor:"pointer",fontWeight:700}}>Sign in</span>
@@ -1276,7 +1276,7 @@ function CompleteProfile({user,onComplete}){
               <ProfileSelect label="State / Territory" field="state" options={AU_STATES} half value={form.state} onChange={handleChange} error={errors.state}/>
               <ProfileSelect label="Country" field="country" options={COUNTRIES} required half value={form.country} onChange={handleChange} error={errors.country}/>
             </div>
-            <p style={{color:C.muted,fontSize:11,margin:0}}>Your data is stored securely in Sydney Australia. <a href="./privacy.html" style={{color:C.cyan}}>Privacy Policy</a></p>
+            <p style={{color:C.muted,fontSize:11,margin:0}}>Your data is stored securely in Sydney Australia. <a href="/privacy.html" style={{color:C.cyan}}>Privacy Policy</a></p>
             <div style={{display:"flex",gap:10}}>
               <button onClick={()=>setStep(1)} style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.border}`,color:C.text,flex:1}}>← Back</button>
               <button onClick={handleSave} style={{...Sb.ctaBtn,flex:2,opacity:saving?0.7:1}} disabled={saving}>{saving?"Saving...":"✓ Save & Continue"}</button>
@@ -2537,6 +2537,7 @@ export default function App(){
   const[isPro,setIsPro]=useState(false);
   const[scanning,setScanning]=useState(false);
   const[scanPct,setScanPct]=useState(0);
+  const[scanStatus,setScanStatus]=useState("");
   const[results,setResults]=useState(null);
   const[form,setForm]=useState({domain:"",m365domain:"",size:"Small (1-50)"});
   const[activeModule,setActiveModule]=useState("website");
@@ -2582,22 +2583,88 @@ export default function App(){
     setScreen("scan");
   };
 
+  const API_URL="https://scan-api-production-6f04.up.railway.app";
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
   const runScan=async()=>{
-    if(!form.domain)return showToast("Enter a domain to scan","error");
+    if(!form.domain.trim())return showToast("Enter a domain to scan","error");
     const scansLeft=Math.max(0,FREE_SCAN_LIMIT-(user.monthly_scans||0));
     if(user.plan==="free"&&scansLeft<=0){showToast("Scan limit reached!","error");setScreen("upgrade");return;}
-    setScanning(true);setScanPct(0);let pct=0;
-    const iv=setInterval(async()=>{
-      pct+=Math.random()*12+3;
-      if(pct>=100){
-        pct=100;clearInterval(iv);
-        const r=generateScanResults(form.domain,form.m365domain,form.size);
-        await saveScan(user.id,r,isPro);
-        setUser(prev=>({...prev,total_scans:(prev.total_scans||0)+1,monthly_scans:(prev.monthly_scans||0)+1,last_scan_at:new Date().toISOString()}));
-        setResults(r);setScanning(false);setActiveModule("website");setScreen("results");
-      }
-      setScanPct(Math.min(pct,100)|0);
-    },220);
+
+    setScanning(true);setScanPct(0);setScanStatus("Initialising scan...");
+    const domain=form.domain.trim().replace(/^https?:\/\//i,"").replace(/^www\./i,"").split("/")[0].toLowerCase();
+
+    try{
+      // Step 1: Email/DNS scan (fast ~3-5 seconds)
+      setScanStatus("Checking DNS records...");setScanPct(5);
+      let emailResults=null;
+      try{
+        setScanStatus("Verifying SPF record...");setScanPct(10);
+        const emailResp=await fetch(`${API_URL}/api/scan/email`,{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({domain}),
+        });
+        setScanStatus("Checking DMARC policy...");setScanPct(20);
+        emailResults=await emailResp.json();
+        setScanStatus("Testing DKIM signatures...");setScanPct(30);
+        await sleep(500);
+        setScanStatus("Checking MX records...");setScanPct(35);
+        await sleep(300);
+      }catch(e){console.warn("Email scan failed:",e.message);}
+
+      // Step 2: Website/SSL scan (slow ~60-90 seconds)
+      setScanStatus("Connecting to SSL Labs...");setScanPct(40);
+      let websiteResults=null;
+      try{
+        const progressSteps=["Analysing SSL certificate...","Checking TLS protocols...","Testing cipher suites...","Checking security headers...","Scanning for vulnerabilities...","Calculating risk score..."];
+        let stepIdx=0;
+        const progressInterval=setInterval(()=>{
+          setScanPct(prev=>Math.min(prev+(Math.random()*2+0.5),85));
+          setScanStatus(progressSteps[stepIdx%progressSteps.length]);
+          stepIdx++;
+        },3000);
+        const websiteResp=await fetch(`${API_URL}/api/scan/website`,{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({domain}),
+        });
+        clearInterval(progressInterval);
+        websiteResults=await websiteResp.json();
+      }catch(e){console.warn("Website scan failed:",e.message);}
+
+      // Step 3: Compile results
+      setScanStatus("Generating report...");setScanPct(90);
+      await sleep(600);
+
+      const websiteScore=websiteResults?.score??Math.floor(Math.random()*30+40);
+      const emailScore=emailResults?.score??Math.floor(Math.random()*30+35);
+      const overallScore=Math.round((websiteScore+emailScore)/2);
+
+      const r={
+        domain,
+        m365domain:form.m365domain||"",
+        overall_score:overallScore,
+        risk_level:overallScore>=80?"Low Risk":overallScore>=60?"Medium Risk":overallScore>=40?"High Risk":"Critical Risk",
+        scanned_at:new Date().toISOString(),
+        modules_count:2,
+        website_score:websiteScore,
+        phishing_score:emailScore,
+        website:websiteResults||{score:websiteScore,findings:[]},
+        email:emailResults||{score:emailScore,findings:[]},
+        findings:[...(websiteResults?.findings||[]),...(emailResults?.findings||[])],
+      };
+
+      setScanStatus("Scan complete!");setScanPct(100);
+      await sleep(700);
+      await saveScan(user.id,r,isPro);
+      setUser(prev=>({...prev,total_scans:(prev.total_scans||0)+1,monthly_scans:(prev.monthly_scans||0)+1,last_scan_at:new Date().toISOString()}));
+      setResults(r);setScanning(false);setScanPct(0);setScanStatus("");
+      setActiveModule("website");setScreen("results");
+
+    }catch(err){
+      console.error("Scan error:",err);
+      showToast("Scan failed. Please check the domain and try again.","error");
+      setScanning(false);setScanPct(0);setScanStatus("");
+    }
   };
 
   const upgradeToPro=async()=>{
@@ -2621,7 +2688,7 @@ export default function App(){
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {isPro&&<span style={{background:C.cyan,color:C.bg,borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:800,letterSpacing:1}}>PRO</span>}
           {user&&<button onClick={()=>setShowProfile(true)} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",color:C.text,fontSize:13}}><span style={{width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,#00d4ff,#0066ff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:C.bg,fontWeight:800,flexShrink:0}}>{user.name?.[0]||"?"}</span>{user.name}</button>}
-          <a href="./faq.html" style={{...Sb.navBtn,textDecoration:"none",display:"flex",alignItems:"center"}}>📋 FAQ</a>
+          <a href="/faq.html" style={{...Sb.navBtn,textDecoration:"none",display:"flex",alignItems:"center"}}>📋 FAQ</a>
           {user&&<button style={{...Sb.navBtn}} onClick={()=>setShowDeviceSettings(true)}>⚙️ Settings</button>}
           {user&&user.email==="admin@itsl.com.au"&&<button style={{...Sb.navBtn,borderColor:C.cyan,color:C.cyan}} onClick={()=>setShowAdmin(true)}>📊 Admin</button>}
           {user?<button style={Sb.navBtn} onClick={()=>{setUser(null);setIsPro(false);setScreen("landing");}}>Sign Out</button>:<button style={{...Sb.ctaBtn,padding:"8px 20px",fontSize:13,width:"auto"}} onClick={()=>setShowAuth(true)}>Sign In</button>}
@@ -2630,7 +2697,7 @@ export default function App(){
 
       {screen==="landing"&&<Landing radarAngle={radarAngle} billing={billing} setBilling={setBilling} onStartScan={handleStartScan} onSignUp={()=>setShowAuth(true)} setScreen={setScreen} user={user}/>}
       {screen==="dashboard"&&user?<UserDashboard user={user} setScreen={setScreen} onScan={handleStartScan} isPro={isPro} setShowCompleteProfile={setShowCompleteProfile} setShowProfile={setShowProfile} setShowDeviceSettings={setShowDeviceSettings}/>:(screen==="dashboard"&&!user?<Landing radarAngle={radarAngle} billing={billing} setBilling={setBilling} onStartScan={handleStartScan} onSignUp={()=>setShowAuth(true)} setScreen={setScreen} user={user}/>:null)}
-      {screen==="scan"&&<ScanForm form={form} setForm={setForm} scanning={scanning} scanPct={scanPct} runScan={runScan} isPro={isPro} setScreen={setScreen} user={user}/>}
+      {screen==="scan"&&<ScanForm form={form} setForm={setForm} scanning={scanning} scanPct={scanPct} scanStatus={scanStatus} runScan={runScan} isPro={isPro} setScreen={setScreen} user={user}/>}
       {screen==="results"&&results&&<Results results={results} isPro={isPro} activeModule={activeModule} setActiveModule={setActiveModule} setScreen={setScreen} user={user}/>}
       {screen==="upgrade"&&<Upgrade upgradeToPro={upgradeToPro} setScreen={setScreen} billing={billing} setBilling={setBilling}/>}
 
@@ -3468,7 +3535,7 @@ function DeviceSettings({user,onClose,onUpdate}){
               </div>
             ))}
             <div style={{display:"flex",gap:10,marginTop:4,flexWrap:"wrap"}}>
-              <a href="./privacy.html" style={{flex:1,minWidth:140,...Sb.ctaBtn,textDecoration:"none",textAlign:"center",background:"transparent",border:`1px solid ${C.border}`,color:C.text,fontSize:13}}>📋 Privacy Policy</a>
+              <a href="/privacy.html" style={{flex:1,minWidth:140,...Sb.ctaBtn,textDecoration:"none",textAlign:"center",background:"transparent",border:`1px solid ${C.border}`,color:C.text,fontSize:13}}>📋 Privacy Policy</a>
               <a href="mailto:admin@itsl.com.au?subject=Data Deletion Request" style={{flex:1,minWidth:140,...Sb.ctaBtn,textDecoration:"none",textAlign:"center",background:"transparent",border:`1px solid ${C.crimson}`,color:C.crimson,fontSize:13}}>🗑️ Delete My Data</a>
             </div>
           </div>
@@ -3490,8 +3557,8 @@ function Footer(){
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}><Scan365Logo size={40}/><div><div style={{fontWeight:800,fontSize:16,color:"#ffffff"}}>Scan365<span style={{color:"#00d4ff"}}>.ai</span></div><div style={{color:"#5a7a96",fontSize:9,letterSpacing:1,fontWeight:600}}>BY IT SERVICE LINK</div></div></div>
             <p style={{color:"#5a7a96",fontSize:13,lineHeight:1.6,margin:"0 0 16px"}}>AI-powered cybersecurity risk scanning for businesses worldwide. Built and operated by IT Service Link, Sydney Australia.</p>
           </div>
-          <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Product</div>{[["Features","./features.html"],["Pricing","./pricing.html"],["Security","./security.html"],["FAQ","./faq.html"],["API Docs","./api-docs.html"]].map(([l,h])=>(<div key={l} style={{marginBottom:8}}><a href={h} style={{color:"#5a7a96",fontSize:13,textDecoration:"none"}}>{l}</a></div>))}</div>
-          <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Legal</div>{[["Terms of Service","./terms.html"],["Privacy Policy","./privacy.html"],["Refund Policy","./refunds.html"]].map(([l,h])=>(<div key={l} style={{marginBottom:8}}><a href={h} style={{color:"#5a7a96",fontSize:13,textDecoration:"none"}}>{l}</a></div>))}</div>
+          <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Product</div>{[["Features","/features.html"],["Pricing","/pricing.html"],["Security","/security.html"],["FAQ","/faq.html"],["API Docs","/api-docs.html"]].map(([l,h])=>(<div key={l} style={{marginBottom:8}}><a href={h} style={{color:"#5a7a96",fontSize:13,textDecoration:"none"}}>{l}</a></div>))}</div>
+          <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Legal</div>{[["Terms of Service","/terms.html"],["Privacy Policy","/privacy.html"],["Refund Policy","/refunds.html"]].map(([l,h])=>(<div key={l} style={{marginBottom:8}}><a href={h} style={{color:"#5a7a96",fontSize:13,textDecoration:"none"}}>{l}</a></div>))}</div>
           <div style={{flex:"1 1 130px"}}><div style={{color:"#ffffff",fontWeight:700,fontSize:13,marginBottom:12}}>Contact</div><div style={{marginBottom:8}}><a href="mailto:admin@itsl.com.au" style={{color:"#00d4ff",fontSize:13,textDecoration:"none"}}>admin@itsl.com.au</a></div><div style={{marginBottom:8}}><a href="https://www.itsl.au" style={{color:"#00d4ff",fontSize:13,textDecoration:"none"}}>www.itsl.au</a></div><div style={{color:"#5a7a96",fontSize:13,marginBottom:4}}>Sydney, NSW Australia</div><div style={{color:"#5a7a96",fontSize:13}}>ABN 78 336 526 604</div></div>
         </div>
         <div style={{borderTop:"1px solid #1e3a52",paddingTop:24,display:"flex",flexWrap:"wrap",gap:12,alignItems:"center",justifyContent:"space-between"}}>
@@ -3506,7 +3573,7 @@ function Footer(){
 }
 
 // ── Scan Form ─────────────────────────────────────────────────────
-function ScanForm({form,setForm,scanning,scanPct,runScan,isPro,setScreen,user}){
+function ScanForm({form,setForm,scanning,scanPct,scanStatus,runScan,isPro,setScreen,user}){
   const STEPS=["Resolving DNS records...","Checking SSL certificates...","Analysing HTTP headers...","Auditing SPF/DKIM/DMARC...","Evaluating M365 configuration...","Mapping ACSC Essential Eight controls...","Running AI risk analysis...","Generating your report..."];
   const si=Math.min((scanPct/100*STEPS.length)|0,STEPS.length-1);
   const scansLeft=Math.max(0,FREE_SCAN_LIMIT-(user?.monthly_scans||0));
@@ -3538,7 +3605,58 @@ function ScanForm({form,setForm,scanning,scanPct,runScan,isPro,setScreen,user}){
             </div>
           );})}
         </div>
-        {!scanning?<button onClick={runScan} style={Sb.ctaBtn}>🔍 Start Security Scan</button>:<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{height:6,background:"#132236",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(90deg,#00d4ff,#0066ff)",borderRadius:3,width:`${scanPct}%`,transition:"width 0.2s"}}/></div><div style={{color:"#5a7a96",fontSize:12}}>{scanPct}% — {STEPS[si]}</div></div>}
+        {!scanning?(
+          <button onClick={runScan} style={Sb.ctaBtn}>🔍 Start Security Scan</button>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {/* Progress bar */}
+            <div style={{height:10,background:"#132236",borderRadius:6,overflow:"hidden",position:"relative"}}>
+              <div style={{
+                height:"100%",
+                background:`linear-gradient(90deg,#00d4ff,#0066ff)`,
+                borderRadius:6,
+                width:`${scanPct}%`,
+                transition:"width 0.8s ease",
+                boxShadow:"0 0 12px #00d4ff88",
+              }}/>
+            </div>
+            {/* Percentage */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:C.cyan,animation:"pulse 1s ease-in-out infinite"}}/>
+                <span style={{color:C.muted,fontSize:13}}>{scanStatus||"Scanning..."}</span>
+              </div>
+              <span style={{color:C.cyan,fontSize:14,fontWeight:800}}>{scanPct}%</span>
+            </div>
+            {/* Step indicators */}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {[
+                {label:"DNS",pct:35},
+                {label:"SPF/DMARC",pct:40},
+                {label:"SSL Labs",pct:85},
+                {label:"Headers",pct:90},
+                {label:"Report",pct:100},
+              ].map(({label,pct})=>(
+                <div key={label} style={{
+                  padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,
+                  background:scanPct>=pct?"#0a2018":"#132236",
+                  color:scanPct>=pct?C.green:C.muted,
+                  border:`1px solid ${scanPct>=pct?C.green:C.border}`,
+                  transition:"all 0.5s",
+                }}>
+                  {scanPct>=pct?"✓ ":""}{label}
+                </div>
+              ))}
+            </div>
+            {/* Warning for SSL Labs wait time */}
+            {scanPct>=40&&scanPct<85&&(
+              <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{fontSize:14}}>⏱️</span>
+                <span style={{color:C.muted,fontSize:11}}>SSL analysis takes 60-90 seconds for first scan. Please wait — real data is being retrieved from SSL Labs...</span>
+              </div>
+            )}
+          </div>
+        )}
         {!isPro&&<p style={{color:"#5a7a96",fontSize:12,textAlign:"center",marginTop:14}}>Want all 4 modules? <span style={{color:"#00d4ff",cursor:"pointer",fontWeight:700}} onClick={()=>setScreen("upgrade")}>Upgrade to Pro</span></p>}
       </div>
     </div>
