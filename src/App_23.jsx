@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.24";
+const APP_VERSION="260725.23";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -215,27 +215,6 @@ function HeroBG(){
 }
 
 function generatePDF(results,isPro,userName){
-  // ── Compatibility shim: normalise new real-scan format → structure this PDF expects ──
-  const _overall=results.overall_score??results.overallScore??0;
-  const _scannedAt=results.scannedAt||(results.scanned_at?new Date(results.scanned_at).toLocaleString():new Date().toLocaleString());
-  // Normalise sev field (real API may use "severity")
-  const _norm=(arr)=>(arr||[]).map(f=>({...f,sev:f.sev||f.severity||"low",title:f.title||"Finding",detail:f.detail||f.description||""}));
-  let _modules;
-  if(results.modules){
-    _modules=results.modules;
-  }else{
-    // Build modules from the flat real-scan shape
-    const wF=_norm(results.website?.findings||[]);
-    const pF=_norm(results.email?.findings||[]);
-    const flat=_norm(results.findings||[]);
-    // If website/email findings are empty, split the flat findings evenly
-    _modules={
-      website:{score:results.website_score??results.website?.score??_overall,findings:wF.length?wF:flat},
-      phishing:{score:results.phishing_score??results.email?.score??_overall,findings:pF},
-    };
-  }
-  const _results={...results,overallScore:_overall,scannedAt:_scannedAt,modules:_modules};
-  results=_results; // rest of function uses normalised object
   const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
   const pw=210,margin=20,cw=pw-margin*2;let y=20;
   const checkY=(need=10)=>{if(y+need>280){doc.addPage();y=20;doc.setFillColor(8,15,26);doc.rect(0,0,210,297,"F");}};
@@ -280,10 +259,9 @@ function generatePDF(results,isPro,userName){
   doc.setFillColor(...rgb);doc.roundedRect(margin,y,Math.round(results.overallScore/100*cw),7,2,2,"F");
   doc.setTextColor(...rgb);doc.setFontSize(7);doc.text(`${results.overallScore}% - ${scoreLabel(results.overallScore)}`,pw-margin-2,y+5,{align:"right"});
   y+=14;
-  const modulesToShow=(isPro?Object.keys(MODULE_META):FREE_MODULES).filter(key=>results.modules[key]);
+  const modulesToShow=isPro?Object.keys(MODULE_META):FREE_MODULES;
   modulesToShow.forEach(key=>{
     const m=results.modules[key],meta=MODULE_META[key];
-    if(!m||!meta)return;
     const mRgb=scoreColor(m.score)==="#10b981"?[16,185,129]:scoreColor(m.score)==="#f59e0b"?[245,158,11]:[239,68,68];
     checkY(20);
     doc.setFillColor(10,30,50);doc.roundedRect(margin,y,cw,14,2,2,"F");doc.setDrawColor(0,212,255);doc.setLineWidth(0.3);doc.roundedRect(margin,y,cw,14,2,2,"S");
@@ -3829,12 +3807,8 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
               style={{...Sb.ctaBtn,background:pdfDone?"#0a2018":"transparent",border:`1px solid ${pdfDone?C.green:C.border}`,color:pdfDone?C.green:C.text}}>
               {pdfDone?"✓ PDF Downloaded":"📄 Download PDF"}
             </button>
-            <button onClick={()=>{
-              const scansLeft=Math.max(0,FREE_SCAN_LIMIT-(user?.monthly_scans||0));
-              if(user?.plan==="free"&&scansLeft<=0){setScreen("upgrade");return;}
-              setScreen("scan");
-            }}
-              style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.border}`,color:C.text,fontSize:12}}>
+            <button onClick={()=>setScreen("scan")}
+              style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.border}`,color:C.muted,fontSize:12}}>
               🔍 New Scan
             </button>
           </div>
@@ -3886,212 +3860,84 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
         </div>
       )}
 
-      {/* Full Report Modal - Dashboard view */}
-      {showReportModal&&(()=>{
-        // ── Derive real dashboard metrics from scan data ──
-        const sevCounts={
-          critical:allFindings.filter(f=>(f.severity||f.sev)==="critical").length,
-          high:allFindings.filter(f=>(f.severity||f.sev)==="high").length,
-          medium:allFindings.filter(f=>(f.severity||f.sev)==="medium").length,
-          low:allFindings.filter(f=>(f.severity||f.sev)==="low").length,
-        };
-        const totalIssues=sevCounts.critical+sevCounts.high+sevCounts.medium+sevCounts.low;
-        // Donut geometry
-        const R=54,CIRC=2*Math.PI*R;
-        const segs=[
-          {key:"Critical",n:sevCounts.critical,c:C.crimson},
-          {key:"High",n:sevCounts.high,c:C.amber},
-          {key:"Medium",n:sevCounts.medium,c:"#a78bfa"},
-          {key:"Low",n:sevCounts.low,c:C.green},
-        ];
-        const donutTotal=totalIssues||1;
-        let _off=0;
-        // Weighted "threats" figure derived from severity (honest: computed, not invented)
-        const threatWeight=sevCounts.critical*8+sevCounts.high*4+sevCounts.medium*2+sevCounts.low;
-        // Top findings sorted by severity
-        const sevRank={critical:0,high:1,medium:2,low:3,pass:4,info:5};
-        const topFindings=[...allFindings].sort((a,b)=>(sevRank[a.severity||a.sev]??9)-(sevRank[b.severity||b.sev]??9)).slice(0,5);
-        const navItems=[
-          {icon:"▦",label:"Dashboard",active:true},
-          {icon:"◈",label:"Assets"},
-          {icon:"◉",label:"Vulnerabilities"},
-          {icon:"⚠",label:"Threats"},
-          {icon:"⚙",label:"Misconfigurations"},
-          {icon:"▤",label:"Compliance"},
-          {icon:"▣",label:"Reports"},
-        ];
-        // Sparkline generator
-        const spark=(seed,up)=>{
-          const pts=[];for(let i=0;i<12;i++){const base=up?i*3:6;pts.push(20-(base+Math.sin(i*1.3+seed)*6+seed%5));}
-          return pts.map((p,i)=>`${i*(260/11)},${Math.max(2,Math.min(38,p+18))}`).join(" ");
-        };
-        return(
-        <div style={{position:"fixed",inset:0,background:C.bg,zIndex:400,overflowY:"auto",display:"flex",flexDirection:"column"}}>
-          {/* Top bar */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 24px",borderBottom:`1px solid ${C.border}`,background:C.surface,position:"sticky",top:0,zIndex:5}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <Scan365Logo size={30}/>
-              <span style={{fontWeight:800,fontSize:16,color:C.white}}>Scan365<span style={{color:C.cyan}}>.ai</span></span>
-              <span style={{color:C.muted,fontSize:13,marginLeft:8,borderLeft:`1px solid ${C.border}`,paddingLeft:12}}>Security Dashboard</span>
-            </div>
-            <div style={{display:"flex",gap:10,alignItems:"center"}}>
-              <span style={{color:C.muted,fontSize:12}}>{domain} · {new Date(scannedAt).toLocaleDateString("en-AU")}</span>
-              <button onClick={handlePDF} style={{...Sb.ctaBtn,width:"auto",padding:"8px 16px",fontSize:13}}>📄 Download PDF</button>
-              <button onClick={()=>setShowReportModal(false)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:14}}>✕ Close</button>
-            </div>
-          </div>
-
-          <div style={{display:"flex",flex:1,minHeight:0}}>
-            {/* Left nav rail */}
-            <div style={{width:210,flexShrink:0,borderRight:`1px solid ${C.border}`,background:C.surface,padding:"18px 12px",display:"flex",flexDirection:"column",gap:4}}>
-              {navItems.map(({icon,label,active})=>(
-                <div key={label} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderRadius:10,background:active?"linear-gradient(90deg,#00d4ff22,#0066ff11)":"transparent",border:`1px solid ${active?C.cyan:"transparent"}`,cursor:"pointer",color:active?C.cyan:C.muted,fontSize:13,fontWeight:active?700:500}}>
-                  <span style={{fontSize:15,width:18,textAlign:"center"}}>{icon}</span>{label}
-                </div>
-              ))}
-              <div style={{marginTop:"auto",display:"flex",alignItems:"center",gap:12,padding:"11px 14px",color:C.muted,fontSize:13}}>
-                <span style={{fontSize:15,width:18,textAlign:"center"}}>⚙</span>Settings
+      {/* Full Report Modal */}
+      {showReportModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(8,15,26,0.96)",zIndex:400,overflowY:"auto",padding:"20px 16px"}}>
+          <div style={{maxWidth:760,margin:"0 auto"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div>
+                <div style={{color:C.white,fontWeight:800,fontSize:20}}>📊 Security Report</div>
+                <div style={{color:C.muted,fontSize:13}}>{domain} · {new Date(scannedAt).toLocaleDateString("en-AU")}</div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={handlePDF} style={{...Sb.ctaBtn,width:"auto",padding:"10px 20px"}}>
+                  📄 Download PDF
+                </button>
+                <button onClick={()=>setShowReportModal(false)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 16px",color:C.muted,cursor:"pointer",fontSize:14}}>
+                  ✕ Close
+                </button>
               </div>
             </div>
 
-            {/* Main dashboard grid */}
-            <div style={{flex:1,padding:"24px",overflowY:"auto"}}>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(340px,1fr))",gap:20}}>
+            {/* Score summary */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:20,marginBottom:16,display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
+              <div style={{width:80,height:80,borderRadius:"50%",border:`4px solid ${scoreColor(overallScore)}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0a1e33",flexShrink:0}}>
+                <div style={{fontSize:24,fontWeight:900,color:scoreColor(overallScore)}}>{overallScore}</div>
+                <div style={{color:C.muted,fontSize:9}}>/100</div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{color:C.white,fontWeight:800,fontSize:16}}>{domain}</div>
+                <div style={{color:scoreColor(overallScore),fontWeight:700,fontSize:13,margin:"4px 0"}}>{riskLevel}</div>
+                <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                  <span style={{color:C.muted,fontSize:12}}>🌐 Website: <strong style={{color:scoreColor(websiteScore)}}>{websiteScore}/100</strong></span>
+                  <span style={{color:C.muted,fontSize:12}}>📧 Email: <strong style={{color:scoreColor(phishingScore)}}>{phishingScore}/100</strong></span>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                {[{label:"Critical",count:critCount,color:C.crimson},{label:"High",count:highCount,color:C.amber},{label:"Passed",count:passCount,color:C.green}].map(({label,count,color})=>(
+                  <div key={label} style={{textAlign:"center",background:C.card,borderRadius:8,padding:"8px 12px"}}>
+                    <div style={{color,fontWeight:900,fontSize:16}}>{count}</div>
+                    <div style={{color:C.muted,fontSize:10,fontWeight:700}}>{label.toUpperCase()}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-                {/* Risk Overview - donut */}
-                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
-                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:20}}>Risk Overview</div>
-                  <div style={{display:"flex",alignItems:"center",gap:24,flexWrap:"wrap"}}>
-                    <div style={{position:"relative",width:140,height:140,flexShrink:0}}>
-                      <svg width="140" height="140" viewBox="0 0 140 140">
-                        <circle cx="70" cy="70" r={R} fill="none" stroke={C.card} strokeWidth="14"/>
-                        {segs.filter(s=>s.n>0).map((s,i)=>{
-                          const len=(s.n/donutTotal)*CIRC;
-                          const el=<circle key={i} cx="70" cy="70" r={R} fill="none" stroke={s.c} strokeWidth="14" strokeDasharray={`${len} ${CIRC-len}`} strokeDashoffset={-_off} transform="rotate(-90 70 70)" strokeLinecap="butt"/>;
-                          _off+=len;return el;
-                        })}
-                      </svg>
-                      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-                        <div style={{fontSize:34,fontWeight:900,color:scoreColor(overallScore),lineHeight:1}}>{overallScore}</div>
-                        <div style={{color:C.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>{riskLevel}</div>
+            {/* All findings */}
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {allFindings.map((f,i)=>(
+                <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
+                  <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:f.fix?10:0}}>
+                    <span style={{fontSize:18,flexShrink:0}}>{severityIcon(f.severity||f.sev)}</span>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <span style={{color:C.white,fontWeight:700,fontSize:14}}>{f.title}</span>
+                        <span style={{color:severityColor(f.severity||f.sev),fontSize:10,fontWeight:800,textTransform:"uppercase",background:C.card,borderRadius:5,padding:"2px 7px"}}>{f.severity||f.sev}</span>
                       </div>
-                    </div>
-                    <div style={{flex:1,minWidth:120,display:"flex",flexDirection:"column",gap:10}}>
-                      {segs.map(s=>(
-                        <div key={s.key} style={{display:"flex",alignItems:"center",gap:10}}>
-                          <span style={{width:9,height:9,borderRadius:"50%",background:s.c,flexShrink:0}}/>
-                          <span style={{color:C.text,fontSize:13,flex:1}}>{s.key}</span>
-                          <span style={{color:C.white,fontSize:14,fontWeight:800}}>{s.n}</span>
-                        </div>
-                      ))}
+                      {f.detail&&<div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>{f.detail}</div>}
                     </div>
                   </div>
-                </div>
-
-                {/* Threats Detected 24h */}
-                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
-                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:16}}>Threats Detected (Last 24h)</div>
-                  <div style={{fontSize:44,fontWeight:900,color:C.white,lineHeight:1,marginBottom:8}}>{threatWeight}</div>
-                  <svg width="100%" height="56" viewBox="0 0 260 40" preserveAspectRatio="none" style={{display:"block",marginBottom:8}}>
-                    <defs><linearGradient id="thGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.crimson} stopOpacity="0.35"/><stop offset="100%" stopColor={C.crimson} stopOpacity="0"/></linearGradient></defs>
-                    <polyline points={spark(threatWeight,true)} fill="none" stroke={C.crimson} strokeWidth="2"/>
-                    <polygon points={`${spark(threatWeight,true)} 260,40 0,40`} fill="url(#thGrad)"/>
-                  </svg>
-                  <div style={{color:sevCounts.critical>0?C.crimson:C.amber,fontSize:13,fontWeight:700}}>
-                    {sevCounts.critical>0?`↑ ${sevCounts.critical} critical need attention`:sevCounts.high>0?`${sevCounts.high} high-severity issues`:"No critical threats"}
-                  </div>
-                </div>
-
-                {/* Top Findings */}
-                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
-                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:16}}>Top Findings</div>
-                  {topFindings.length===0?(
-                    <div style={{color:C.muted,fontSize:13,padding:"12px 0"}}>No findings recorded for this scan.</div>
-                  ):(
-                    <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                      {topFindings.map((f,i)=>{
-                        const sev=f.severity||f.sev;
-                        return(
-                          <div key={i} style={{display:"flex",alignItems:"center",gap:10}}>
-                            <span style={{width:9,height:9,borderRadius:"50%",background:severityColor(sev),flexShrink:0}}/>
-                            <span style={{color:C.text,fontSize:13,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.title}</span>
-                            <span style={{background:severityColor(sev),color:"#080f1a",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:800,textTransform:"capitalize",flexShrink:0}}>{sev}</span>
-                          </div>
-                        );
-                      })}
+                  {f.fix&&(
+                    <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",marginTop:8}}>
+                      <div style={{color:C.cyan,fontSize:11,fontWeight:700,marginBottom:4}}>💡 HOW TO FIX:</div>
+                      <pre style={{color:C.text,fontSize:11,lineHeight:1.6,whiteSpace:"pre-wrap",fontFamily:"inherit",margin:0}}>{f.fix}</pre>
                     </div>
                   )}
                 </div>
+              ))}
+            </div>
 
-                {/* Module scores (Assets Scanned equivalent, real data) */}
-                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
-                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:16}}>Modules Scanned</div>
-                  <div style={{fontSize:44,fontWeight:900,color:C.white,lineHeight:1,marginBottom:8}}>{totalIssues}</div>
-                  <div style={{color:C.cyan,fontSize:13,fontWeight:700,marginBottom:16}}>total issues across {results.modules_count||2} modules</div>
-                  <svg width="100%" height="44" viewBox="0 0 260 40" preserveAspectRatio="none" style={{display:"block",marginBottom:12}}>
-                    <defs><linearGradient id="asGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.cyan} stopOpacity="0.3"/><stop offset="100%" stopColor={C.cyan} stopOpacity="0"/></linearGradient></defs>
-                    <polyline points={spark(totalIssues,true)} fill="none" stroke={C.cyan} strokeWidth="2"/>
-                    <polygon points={`${spark(totalIssues,true)} 260,40 0,40`} fill="url(#asGrad)"/>
-                  </svg>
-                  {[{label:"Website & Domain",score:websiteScore},{label:"Phishing / Email",score:phishingScore}].map(({label,score})=>(
-                    <div key={label} style={{marginBottom:10}}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                        <span style={{color:C.muted,fontSize:12}}>{label}</span>
-                        <span style={{color:scoreColor(score),fontSize:12,fontWeight:800}}>{score}/100</span>
-                      </div>
-                      <div style={{height:5,background:C.card,borderRadius:3,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${score}%`,background:scoreColor(score),borderRadius:3}}/>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* All findings detail list */}
-              <div style={{marginTop:24}}>
-                <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:14}}>All Security Findings ({allFindings.length})</div>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {allFindings.map((f,i)=>{
-                    const sev=f.severity||f.sev;
-                    return(
-                      <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:16,borderLeft:`3px solid ${severityColor(sev)}`}}>
-                        <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                          <span style={{fontSize:16,flexShrink:0}}>{severityIcon(sev)}</span>
-                          <div style={{flex:1}}>
-                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
-                              <span style={{color:C.white,fontWeight:700,fontSize:14}}>{f.title}</span>
-                              <span style={{color:severityColor(sev),fontSize:10,fontWeight:800,textTransform:"uppercase",background:C.card,borderRadius:5,padding:"2px 7px"}}>{sev}</span>
-                            </div>
-                            {f.detail&&<div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>{f.detail}</div>}
-                            {f.fix&&(
-                              <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",marginTop:8}}>
-                                <div style={{color:C.cyan,fontSize:11,fontWeight:700,marginBottom:4}}>💡 HOW TO FIX:</div>
-                                <pre style={{color:C.text,fontSize:11,lineHeight:1.6,whiteSpace:"pre-wrap",fontFamily:"inherit",margin:0}}>{f.fix}</pre>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {allFindings.length===0&&<div style={{color:C.muted,fontSize:13,textAlign:"center",padding:24}}>No findings available for this scan.</div>}
-                </div>
-              </div>
-
-              {/* ITSL contact */}
-              <div style={{background:"#0a1e33",border:`1px solid ${C.cyan}`,borderRadius:12,padding:16,marginTop:24,textAlign:"center"}}>
-                <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:6}}>Need help fixing these issues?</div>
-                <div style={{color:C.muted,fontSize:12,marginBottom:10}}>IT Service Link provides expert cybersecurity remediation for Australian businesses.</div>
-                <a href="mailto:admin@itsl.com.au" style={{color:C.cyan,fontWeight:700,fontSize:13}}>admin@itsl.com.au</a>
-                <span style={{color:C.muted,fontSize:12}}> · </span>
-                <a href="https://www.itsl.au" style={{color:C.cyan,fontWeight:700,fontSize:13}}>www.itsl.au</a>
-              </div>
+            {/* ITSL contact */}
+            <div style={{background:"#0a1e33",border:`1px solid ${C.cyan}`,borderRadius:12,padding:16,marginTop:16,textAlign:"center"}}>
+              <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:6}}>Need help fixing these issues?</div>
+              <div style={{color:C.muted,fontSize:12,marginBottom:10}}>IT Service Link provides expert cybersecurity remediation services for Australian businesses.</div>
+              <a href="mailto:admin@itsl.com.au" style={{color:C.cyan,fontWeight:700,fontSize:13}}>admin@itsl.com.au</a>
+              <span style={{color:C.muted,fontSize:12}}> · </span>
+              <a href="https://www.itsl.au" style={{color:C.cyan,fontWeight:700,fontSize:13}}>www.itsl.au</a>
             </div>
           </div>
         </div>
-        );
-      })()}
-
+      )}
     </div>
   );
 }
