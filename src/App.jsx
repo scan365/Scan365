@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.33";
+const APP_VERSION="260725.34";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -216,6 +216,90 @@ function deriveFindings(score,type){
   else {out=tag([cat.low[0]],"low");}
   return out.filter(Boolean);
 }
+
+// ══════════════════════════════════════════════════════════════
+// Reusable inline-SVG chart primitives (no external dependencies)
+// ══════════════════════════════════════════════════════════════
+function DonutGauge({score,size=120,stroke=12,label}){
+  const R=(size-stroke)/2, C0=2*Math.PI*R, clamped=Math.max(0,Math.min(100,score||0));
+  const col=scoreColor(clamped);
+  return(
+    <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size/2} cy={size/2} r={R} fill="none" stroke="#132236" strokeWidth={stroke}/>
+        <circle cx={size/2} cy={size/2} r={R} fill="none" stroke={col} strokeWidth={stroke}
+          strokeDasharray={`${(clamped/100)*C0} ${C0}`} strokeLinecap="round"
+          transform={`rotate(-90 ${size/2} ${size/2})`} style={{transition:"stroke-dasharray 0.8s ease"}}/>
+      </svg>
+      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <div style={{fontSize:size*0.26,fontWeight:900,color:col,lineHeight:1}}>{clamped}</div>
+        {label&&<div style={{color:"#5a7a96",fontSize:size*0.08,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginTop:2}}>{label}</div>}
+      </div>
+    </div>
+  );
+}
+function BarChart({data,height=120,color="#00d4ff"}){
+  // data: [{label, value}]
+  const max=Math.max(...data.map(d=>d.value),1);
+  const bw=100/data.length;
+  return(
+    <svg width="100%" height={height} viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" style={{display:"block"}}>
+      {data.map((d,i)=>{
+        const h=(d.value/max)*(height-20);
+        return <rect key={i} x={i*bw+bw*0.15} y={height-h-14} width={bw*0.7} height={Math.max(h,1)} rx="1.5" fill={color} opacity={0.55+0.45*(d.value/max)}/>;
+      })}
+    </svg>
+  );
+}
+function BarChartLabeled({data,height=140,color="#00d4ff"}){
+  const max=Math.max(...data.map(d=>d.value),1);
+  return(
+    <div style={{display:"flex",alignItems:"flex-end",gap:8,height,padding:"0 4px"}}>
+      {data.map((d,i)=>(
+        <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6,height:"100%",justifyContent:"flex-end"}}>
+          <div style={{color:"#e2eaf4",fontSize:11,fontWeight:800}}>{d.value}</div>
+          <div style={{width:"100%",background:d.color||color,borderRadius:"4px 4px 0 0",height:`${(d.value/max)*100}%`,minHeight:2,transition:"height 0.8s ease"}}/>
+          <div style={{color:"#5a7a96",fontSize:10,fontWeight:600,textAlign:"center",whiteSpace:"nowrap"}}>{d.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+function Sparkline({points,color="#00d4ff",height=44,fill=true,id="sp"}){
+  const max=Math.max(...points,1), min=Math.min(...points,0);
+  const range=max-min||1, W=260;
+  const coords=points.map((p,i)=>`${i*(W/(points.length-1))},${height-((p-min)/range)*(height-6)-3}`).join(" ");
+  return(
+    <svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none" style={{display:"block"}}>
+      <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity="0.3"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>
+      {fill&&<polygon points={`${coords} ${W},${height} 0,${height}`} fill={`url(#${id})`}/>}
+      <polyline points={coords} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+function DonutMulti({segments,size=140,stroke=16,centerLabel,centerSub}){
+  // segments: [{value, color}]
+  const R=(size-stroke)/2, C0=2*Math.PI*R;
+  const total=segments.reduce((s,x)=>s+x.value,0)||1;
+  let off=0;
+  return(
+    <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size/2} cy={size/2} r={R} fill="none" stroke="#132236" strokeWidth={stroke}/>
+        {segments.filter(s=>s.value>0).map((s,i)=>{
+          const len=(s.value/total)*C0;
+          const el=<circle key={i} cx={size/2} cy={size/2} r={R} fill="none" stroke={s.color} strokeWidth={stroke} strokeDasharray={`${len} ${C0-len}`} strokeDashoffset={-off} transform={`rotate(-90 ${size/2} ${size/2})`}/>;
+          off+=len; return el;
+        })}
+      </svg>
+      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <div style={{fontSize:size*0.24,fontWeight:900,color:"#fff",lineHeight:1}}>{centerLabel}</div>
+        {centerSub&&<div style={{color:"#5a7a96",fontSize:size*0.08,fontWeight:700,marginTop:2}}>{centerSub}</div>}
+      </div>
+    </div>
+  );
+}
+
 
 const FREE_MODULES=["website","phishing"];
 const MODULE_META={
@@ -1613,6 +1697,71 @@ function AdminDashboard({onClose}){
           ))}
         </div>
 
+        {/* Analytics charts row */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:28}}>
+          {/* Plan distribution donut */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20}}>
+            <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:16}}>Plan Distribution</div>
+            {(()=>{
+              const ent=users.filter(u=>u.plan==="enterprise").length;
+              const pro=users.filter(u=>u.plan==="pro").length;
+              const free=freeUsers.length;
+              const segs=[{value:ent,color:"#a78bfa"},{value:pro,color:C.green},{value:free,color:C.amber}];
+              return(
+                <div style={{display:"flex",alignItems:"center",gap:16}}>
+                  <DonutMulti segments={segs} size={120} stroke={15} centerLabel={users.length} centerSub="users"/>
+                  <div style={{flex:1,display:"flex",flexDirection:"column",gap:9}}>
+                    {[["Enterprise",ent,"#a78bfa"],["Pro",pro,C.green],["Free",free,C.amber]].map(([l,n,c])=>(
+                      <div key={l} style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{width:9,height:9,borderRadius:"50%",background:c,flexShrink:0}}/>
+                        <span style={{color:C.text,fontSize:12,flex:1}}>{l}</span>
+                        <span style={{color:C.white,fontSize:13,fontWeight:800}}>{n}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Scan activity by user (top scanners) */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20}}>
+            <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:16}}>Scan Activity · Top Accounts</div>
+            {(()=>{
+              const top=[...users].sort((a,b)=>(b.total_scans||0)-(a.total_scans||0)).slice(0,5)
+                .map(u=>({label:(u.company||u.name||u.email||"?").slice(0,8),value:u.total_scans||0,color:u.plan==="free"?C.amber:C.green}));
+              const hasData=top.some(t=>t.value>0);
+              return hasData?<BarChartLabeled data={top} height={130}/>:
+                <div style={{color:C.muted,fontSize:12,textAlign:"center",padding:"40px 0"}}>No scan activity yet</div>;
+            })()}
+          </div>
+
+          {/* Revenue snapshot */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20,display:"flex",flexDirection:"column"}}>
+            <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:12}}>Monthly Recurring Revenue</div>
+            {(()=>{
+              const paying=proUsers.length;
+              const mrr=paying*49;
+              return(
+                <>
+                  <div style={{fontSize:36,fontWeight:900,color:C.green,lineHeight:1,marginBottom:4}}>${mrr.toLocaleString()}</div>
+                  <div style={{color:C.muted,fontSize:12,marginBottom:"auto"}}>{paying} paying account{paying!==1?"s":""} · $49/mo</div>
+                  <div style={{display:"flex",gap:12,marginTop:14,flexWrap:"wrap"}}>
+                    <div style={{flex:1}}>
+                      <div style={{color:C.cyan,fontSize:18,fontWeight:900}}>${(mrr*12).toLocaleString()}</div>
+                      <div style={{color:C.muted,fontSize:10,fontWeight:600}}>ARR (projected)</div>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{color:"#a78bfa",fontSize:18,fontWeight:900}}>{stats?.conversion_rate||0}%</div>
+                      <div style={{color:C.muted,fontSize:10,fontWeight:600}}>Conversion</div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+
         <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
           {[["users","👥 All Users"],["invoices","💳 Invoices"],["access","🔑 Access Control"],["marketing","📊 Marketing DB"],["free","🎯 Push to Pro"],["security","🔐 Security"],["leads","📧 Leads"]].map(([key,label])=>(
             <button key={key} onClick={()=>{setTab(key);setEditUser(null);setPassMsg("");}} style={{padding:"8px 14px",border:`1px solid ${tab===key?C.cyan:C.border}`,borderRadius:8,background:tab===key?"#0a1e33":"transparent",color:tab===key?C.cyan:C.muted,cursor:"pointer",fontSize:13,fontWeight:600}}>{label}</button>
@@ -2338,51 +2487,93 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,marginBottom:20}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
             <h3 style={{color:C.white,fontSize:16,fontWeight:700,margin:0}}>🛡️ Latest Security Audit</h3>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
               <span style={{color:C.muted,fontSize:12}}>Domain: <span style={{color:C.cyan,fontWeight:700}}>{latestScan.domain}</span></span>
               <span style={{color:C.muted,fontSize:12}}>• {new Date(latestScan.scanned_at).toLocaleDateString("en-AU")}</span>
+              <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"7px 14px",fontSize:12}}>Rescan →</button>
             </div>
           </div>
 
-          {/* Module scores */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:20}}>
-            {[
-              {icon:"🌐",label:"Website & Domain",score:latestScan.website_score,free:true},
-              {icon:"🎣",label:"Phishing Risk",score:latestScan.phishing_score,free:true},
-              {icon:"☁️",label:"Microsoft 365",score:latestScan.m365_score,free:false},
-              {icon:"🛡️",label:"ACSC Essential Eight",score:latestScan.essential8_score,free:false},
-            ].map(({icon,label,score,free})=>(
-              <div key={label} style={{background:C.card,border:`1px solid ${isPro||free?C.border:"#2a1f0a"}`,borderRadius:12,padding:"14px 16px",opacity:isPro||free?1:0.6}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                  <span style={{fontSize:18}}>{icon}</span>
-                  <span style={{color:C.white,fontSize:12,fontWeight:700,flex:1}}>{label}</span>
-                  {!free&&!isPro&&<span style={{background:"#f59e0b",color:"#080f1a",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:800}}>PRO</span>}
-                </div>
-                {isPro||free?(
-                  <>
-                    <div style={{fontSize:28,fontWeight:900,color:score?scoreColor(score):C.muted,lineHeight:1}}>{score??"--"}</div>
-                    <div style={{color:score?scoreColor(score):C.muted,fontSize:11,marginTop:2}}>{score!=null?scoreLabel(score):"Not scanned"}</div>
-                    <div style={{height:4,background:C.border,borderRadius:2,marginTop:8,overflow:"hidden"}}>
-                      <div style={{height:"100%",background:score?scoreColor(score):"transparent",width:`${score||0}%`,borderRadius:2,transition:"width 0.5s"}}/>
+          {/* Top analytics row: overall gauge + severity donut + trend */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:16,marginBottom:20}}>
+            {/* Overall score gauge */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10}}>
+              <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,alignSelf:"flex-start"}}>Overall Risk Score</div>
+              <DonutGauge score={overallScore} size={130} label={scoreLabel(overallScore)}/>
+              <div style={{color:overallScore<50?C.crimson:overallScore<70?C.amber:C.green,fontSize:12,fontWeight:700,textAlign:"center"}}>
+                {overallScore<50?"Immediate action required":overallScore<70?"Review & remediate findings":"Good security posture"}
+              </div>
+            </div>
+            {/* Severity breakdown donut */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20}}>
+              <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:14}}>Findings by Severity</div>
+              {(()=>{
+                const sc={critical:latestScan.critical_count||0,high:latestScan.high_count||0,medium:latestScan.medium_count||0,low:latestScan.low_count||0};
+                const total=sc.critical+sc.high+sc.medium+sc.low;
+                const segs=[{value:sc.critical,color:C.crimson},{value:sc.high,color:C.amber},{value:sc.medium,color:"#a78bfa"},{value:sc.low,color:C.green}];
+                return(
+                  <div style={{display:"flex",alignItems:"center",gap:16}}>
+                    <DonutMulti segments={segs} size={110} stroke={14} centerLabel={total} centerSub="issues"/>
+                    <div style={{flex:1,display:"flex",flexDirection:"column",gap:8}}>
+                      {[["Critical",sc.critical,C.crimson],["High",sc.high,C.amber],["Medium",sc.medium,"#a78bfa"],["Low",sc.low,C.green]].map(([l,n,c])=>(
+                        <div key={l} style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{width:8,height:8,borderRadius:"50%",background:c,flexShrink:0}}/>
+                          <span style={{color:C.text,fontSize:12,flex:1}}>{l}</span>
+                          <span style={{color:C.white,fontSize:13,fontWeight:800}}>{n}</span>
+                        </div>
+                      ))}
                     </div>
+                  </div>
+                );
+              })()}
+            </div>
+            {/* Score trend across scans */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20,display:"flex",flexDirection:"column"}}>
+              <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Score Trend</div>
+              {(()=>{
+                const hist=[...history].slice(0,8).reverse().map(h=>h.overall_score||0);
+                const pts=hist.length>1?hist:[overallScore,overallScore];
+                const trend=pts.length>1?pts[pts.length-1]-pts[0]:0;
+                return(
+                  <>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:4}}>
+                      <span style={{fontSize:32,fontWeight:900,color:C.white}}>{overallScore}</span>
+                      <span style={{fontSize:13,fontWeight:700,color:trend>=0?C.green:C.crimson}}>{trend>=0?"↑":"↓"} {Math.abs(trend)} pts</span>
+                    </div>
+                    <div style={{color:C.muted,fontSize:11,marginBottom:"auto"}}>across {history.length} scan{history.length!==1?"s":""}</div>
+                    <Sparkline points={pts} color={scoreColor(overallScore)} height={50} id="scoreTrend"/>
                   </>
-                ):(
-                  <div style={{color:C.muted,fontSize:12,marginTop:4}}>Upgrade to Pro to unlock</div>
-                )}
-              </div>
-            ))}
+                );
+              })()}
+            </div>
           </div>
 
-          {/* Risk level banner */}
-          <div style={{background:overallScore?`${scoreColor(overallScore)}15`:"#132236",border:`1px solid ${overallScore?scoreColor(overallScore):C.border}`,borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:20}}>{overallScore>=80?"✅":overallScore>=60?"⚠️":"🚨"}</span>
-              <div>
-                <div style={{color:C.white,fontWeight:700,fontSize:14}}>Overall Risk Level: <span style={{color:scoreColor(overallScore)}}>{scoreLabel(overallScore)}</span></div>
-                <div style={{color:C.muted,fontSize:12,marginTop:2}}>Score {overallScore}/100 • {overallScore<50?"Immediate action required":overallScore<70?"Review and remediate findings":"Good security posture"}</div>
-              </div>
+          {/* Module scores as horizontal bars */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20}}>
+            <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:14}}>Module Scores</div>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              {[
+                {icon:"🌐",label:"Website & Domain",score:latestScan.website_score,free:true},
+                {icon:"🎣",label:"Phishing Risk",score:latestScan.phishing_score,free:true},
+                {icon:"☁️",label:"Microsoft 365",score:latestScan.m365_score,free:false},
+                {icon:"🛡️",label:"ACSC Essential Eight",score:latestScan.essential8_score,free:false},
+              ].map(({icon,label,score,free})=>{
+                const locked=!free&&!isPro;
+                return(
+                  <div key={label} style={{opacity:locked?0.55:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                      <span style={{fontSize:15}}>{icon}</span>
+                      <span style={{color:C.white,fontSize:13,fontWeight:600,flex:1}}>{label}</span>
+                      {locked?<span style={{background:C.amber,color:"#080f1a",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:800}}>PRO</span>:
+                        <span style={{color:score!=null?scoreColor(score):C.muted,fontSize:14,fontWeight:900}}>{score!=null?`${score}/100`:"—"}</span>}
+                    </div>
+                    <div style={{height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                      <div style={{height:"100%",background:locked?"#2a1f0a":score!=null?scoreColor(score):"transparent",width:locked?"0%":`${score||0}%`,borderRadius:4,transition:"width 0.8s ease"}}/>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"8px 16px",fontSize:12}}>Rescan →</button>
           </div>
         </div>
       ):(
