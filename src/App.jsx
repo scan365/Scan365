@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.32";
+const APP_VERSION="260725.33";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -2360,8 +2360,8 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
                 </div>
                 {isPro||free?(
                   <>
-                    <div style={{fontSize:28,fontWeight:900,color:score?scoreColor(score):C.muted,lineHeight:1}}>{score||"--"}</div>
-                    <div style={{color:score?scoreColor(score):C.muted,fontSize:11,marginTop:2}}>{score?scoreLabel(score):"Not scanned"}</div>
+                    <div style={{fontSize:28,fontWeight:900,color:score?scoreColor(score):C.muted,lineHeight:1}}>{score??"--"}</div>
+                    <div style={{color:score?scoreColor(score):C.muted,fontSize:11,marginTop:2}}>{score!=null?scoreLabel(score):"Not scanned"}</div>
                     <div style={{height:4,background:C.border,borderRadius:2,marginTop:8,overflow:"hidden"}}>
                       <div style={{height:"100%",background:score?scoreColor(score):"transparent",width:`${score||0}%`,borderRadius:2,transition:"width 0.5s"}}/>
                     </div>
