@@ -132,11 +132,27 @@ export async function upgradePlan(userId, plan, billingCycle, amount) {
 
 // Save scan result
 export async function saveScan(userId, scanData, isPro) {
-  const allFindings = Object.values(scanData.modules).flatMap(m => m.findings);
-  const criticalCount = allFindings.filter(f => f.sev === 'critical').length;
-  const highCount = allFindings.filter(f => f.sev === 'high').length;
-  const mediumCount = allFindings.filter(f => f.sev === 'medium').length;
-  const lowCount = allFindings.filter(f => f.sev === 'low').length;
+  // ── Normalise: real scans use a flat shape (website/email/findings), old demo used .modules ──
+  const overall = scanData.overall_score ?? scanData.overallScore ?? 0;
+  const websiteScore = scanData.website_score ?? scanData.website?.score ?? scanData.modules?.website?.score ?? null;
+  const phishingScore = scanData.phishing_score ?? scanData.email?.score ?? scanData.modules?.phishing?.score ?? null;
+  const m365Score = scanData.m365_score ?? scanData.modules?.m365?.score ?? null;
+  const essential8Score = scanData.essential8_score ?? scanData.modules?.essential8?.score ?? null;
+
+  // Collect findings from whichever shape is present
+  const modulesObj = scanData.modules || {
+    website: scanData.website || { findings: [] },
+    phishing: scanData.email || { findings: [] },
+  };
+  const allFindings = [
+    ...(scanData.findings || []),
+    ...Object.values(modulesObj).flatMap(m => (m && m.findings) ? m.findings : []),
+  ];
+  const _sev = (f) => (f.sev || f.severity || 'low');
+  const criticalCount = allFindings.filter(f => _sev(f) === 'critical').length;
+  const highCount = allFindings.filter(f => _sev(f) === 'high').length;
+  const mediumCount = allFindings.filter(f => _sev(f) === 'medium').length;
+  const lowCount = allFindings.filter(f => _sev(f) === 'low').length;
 
   const { data: scan, error } = await supabase
     .from('scans')
@@ -144,12 +160,12 @@ export async function saveScan(userId, scanData, isPro) {
       user_id: userId,
       domain: scanData.domain,
       m365_domain: scanData.m365domain || null,
-      overall_score: scanData.overallScore,
-      risk_level: scanData.overallScore >= 70 ? 'Low Risk' : scanData.overallScore >= 45 ? 'Medium Risk' : 'High Risk',
-      website_score: scanData.modules.website?.score,
-      m365_score: scanData.modules.m365?.score,
-      essential8_score: scanData.modules.essential8?.score,
-      phishing_score: scanData.modules.phishing?.score,
+      overall_score: overall,
+      risk_level: overall >= 70 ? 'Low Risk' : overall >= 45 ? 'Medium Risk' : 'High Risk',
+      website_score: websiteScore,
+      m365_score: m365Score,
+      essential8_score: essential8Score,
+      phishing_score: phishingScore,
       critical_count: criticalCount,
       high_count: highCount,
       medium_count: mediumCount,
@@ -162,11 +178,14 @@ export async function saveScan(userId, scanData, isPro) {
 
   if (error) return { error: error.message };
 
-  // Save individual findings
+  // Save individual findings (dedupe module source from whichever shape we have)
   const findings = [];
-  Object.entries(scanData.modules).forEach(([module, data]) => {
-    data.findings.forEach(f => {
-      findings.push({ scan_id: scan.id, module, severity: f.sev, title: f.title, detail: f.detail });
+  const moduleEntries = scanData.modules
+    ? Object.entries(scanData.modules)
+    : [['website', scanData.website || { findings: [] }], ['phishing', scanData.email || { findings: [] }]];
+  moduleEntries.forEach(([module, data]) => {
+    ((data && data.findings) ? data.findings : []).forEach(f => {
+      findings.push({ scan_id: scan.id, module, severity: _sev(f), title: f.title || 'Finding', detail: f.detail || f.description || '' });
     });
   });
   if (findings.length > 0) {
@@ -176,7 +195,7 @@ export async function saveScan(userId, scanData, isPro) {
   // Increment user scan count
   await supabase.rpc('increment_scan_count', { user_id_param: userId });
 
-  await logAudit(userId, 'scan_completed', 'scans', scan.id, { domain: scanData.domain, score: scanData.overallScore });
+  await logAudit(userId, 'scan_completed', 'scans', scan.id, { domain: scanData.domain, score: overall });
   return { scan };
 }
 

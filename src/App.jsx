@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.30";
+const APP_VERSION="260725.31";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -2840,8 +2840,12 @@ export default function App(){
 
       setScanStatus("Scan complete!");setScanPct(100);
       await sleep(700);
-      await saveScan(user.id,r,isPro);
+      const saveResult=await saveScan(user.id,r,isPro);
+      if(saveResult?.error){console.error("Scan save failed:",saveResult.error);}
+      // Optimistic local update so UI feels instant
       setUser(prev=>({...prev,total_scans:(prev.total_scans||0)+1,monthly_scans:(prev.monthly_scans||0)+1,last_scan_at:new Date().toISOString()}));
+      // Re-fetch the authoritative user record so counts + limit reflect what's actually stored
+      try{const fresh=await getUser(user.email);if(fresh&&!fresh.error){setUser(prev=>({...prev,...fresh}));}}catch(e){console.warn("User refresh after scan failed:",e);}
       setResults(r);setScanning(false);setScanPct(0);setScanStatus("");
       setActiveModule("website");setScreen("results");
 
