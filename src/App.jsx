@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.34";
+const APP_VERSION="260725.35";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -2447,7 +2447,10 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
             </div>
           </div>
         </div>
-        <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"14px 32px",fontSize:15}}>🔍 New Security Scan</button>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {latestScan&&<button onClick={()=>setViewScan(latestScan)} style={{...Sb.ctaBtn,width:"auto",padding:"14px 24px",fontSize:15,background:"transparent",border:`1px solid ${C.cyan}`,color:C.cyan}}>📊 View Last Report</button>}
+          <button onClick={onScan} style={{...Sb.ctaBtn,width:"auto",padding:"14px 32px",fontSize:15}}>🔍 New Security Scan</button>
+        </div>
       </div>
 
       {/* Profile incomplete warning */}
@@ -2815,7 +2818,7 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
       {/* Scan report viewer modal */}
       {viewScan&&(
         <div style={{position:"fixed",inset:0,background:"rgba(8,15,26,0.96)",zIndex:400,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px",overflowY:"auto"}}>
-          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:24,width:"100%",maxWidth:680,marginTop:"auto",marginBottom:"auto"}}>
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:24,width:"100%",maxWidth:760,marginTop:"auto",marginBottom:"auto"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
               <div>
                 <div style={{color:C.white,fontWeight:800,fontSize:16}}>📊 Scan Report</div>
@@ -2826,22 +2829,27 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
                 <button onClick={()=>setViewScan(null)} style={{...Sb.navBtn}}>✕ Close</button>
               </div>
             </div>
-            {/* Overall score */}
-            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
-              <div style={{width:64,height:64,borderRadius:"50%",border:`3px solid ${scoreColor(viewScan.overall_score||0)}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                <span style={{fontSize:20,fontWeight:900,color:scoreColor(viewScan.overall_score||0)}}>{viewScan.overall_score||"--"}</span>
+            {/* Overall score with gauge + module bars */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:16,marginBottom:16}}>
+              <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:20,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,alignSelf:"flex-start",marginBottom:12}}>Overall Risk Score</div>
+                <DonutGauge score={viewScan.overall_score||0} size={120} label={scoreLabel(viewScan.overall_score||0)}/>
               </div>
-              <div>
-                <div style={{color:C.white,fontWeight:700,fontSize:16}}>{scoreLabel(viewScan.overall_score||0)}</div>
-                <div style={{color:C.muted,fontSize:12}}>Overall Risk Score · {viewScan.domain}</div>
-              </div>
-              <div style={{marginLeft:"auto",display:"flex",gap:10}}>
-                {[{label:"Website",val:viewScan.website_score},{label:"Phishing",val:viewScan.phishing_score},{label:"M365",val:viewScan.m365_score},{label:"E8",val:viewScan.essential8_score}].map(({label,val})=>val?(
-                  <div key={label} style={{textAlign:"center",background:"#0a1e33",borderRadius:8,padding:"8px 10px"}}>
-                    <div style={{fontSize:16,fontWeight:900,color:scoreColor(val)}}>{val}</div>
-                    <div style={{color:C.muted,fontSize:9,marginTop:2}}>{label}</div>
-                  </div>
-                ):null)}
+              <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
+                <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:14}}>Module Scores</div>
+                <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                  {[{label:"Website & Domain",val:viewScan.website_score},{label:"Phishing / Email",val:viewScan.phishing_score},{label:"Microsoft 365",val:viewScan.m365_score},{label:"ACSC Essential Eight",val:viewScan.essential8_score}].filter(m=>m.val!=null).map(({label,val})=>(
+                    <div key={label}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                        <span style={{color:C.white,fontSize:12,fontWeight:600}}>{label}</span>
+                        <span style={{color:scoreColor(val),fontSize:13,fontWeight:900}}>{val}/100</span>
+                      </div>
+                      <div style={{height:7,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${val}%`,background:scoreColor(val),borderRadius:4,transition:"width 0.8s ease"}}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
             {/* Findings from stored results or generic message */}
@@ -4332,53 +4340,35 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
                   </div>
                 </div>
 
-                {/* Risk Overview - donut */}
+                {/* Overall Risk gauge */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                  <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,alignSelf:"flex-start",marginBottom:16}}>Overall Risk Score</div>
+                  <DonutGauge score={overallScore} size={150} label={riskLevel}/>
+                  <div style={{color:overallScore<50?C.crimson:overallScore<70?C.amber:C.green,fontSize:13,fontWeight:700,marginTop:14,textAlign:"center"}}>
+                    {overallScore<50?"Immediate action required":overallScore<70?"Review & remediate findings":"Good security posture"}
+                  </div>
+                </div>
+
+                {/* Findings by severity donut */}
                 <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
-                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:20}}>Risk Overview</div>
-                  <div style={{display:"flex",alignItems:"center",gap:24,flexWrap:"wrap"}}>
-                    <div style={{position:"relative",width:140,height:140,flexShrink:0}}>
-                      <svg width="140" height="140" viewBox="0 0 140 140">
-                        <circle cx="70" cy="70" r={R} fill="none" stroke={C.card} strokeWidth="14"/>
-                        {segs.filter(s=>s.n>0).map((s,i)=>{
-                          const len=(s.n/donutTotal)*CIRC;
-                          const el=<circle key={i} cx="70" cy="70" r={R} fill="none" stroke={s.c} strokeWidth="14" strokeDasharray={`${len} ${CIRC-len}`} strokeDashoffset={-_off} transform="rotate(-90 70 70)" strokeLinecap="butt"/>;
-                          _off+=len;return el;
-                        })}
-                      </svg>
-                      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-                        <div style={{fontSize:34,fontWeight:900,color:scoreColor(overallScore),lineHeight:1}}>{overallScore}</div>
-                        <div style={{color:C.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>{riskLevel}</div>
-                      </div>
-                    </div>
-                    <div style={{flex:1,minWidth:120,display:"flex",flexDirection:"column",gap:10}}>
-                      {segs.map(s=>(
-                        <div key={s.key} style={{display:"flex",alignItems:"center",gap:10}}>
-                          <span style={{width:9,height:9,borderRadius:"50%",background:s.c,flexShrink:0}}/>
-                          <span style={{color:C.text,fontSize:13,flex:1}}>{s.key}</span>
-                          <span style={{color:C.white,fontSize:14,fontWeight:800}}>{s.n}</span>
+                  <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:18}}>Findings by Severity</div>
+                  <div style={{display:"flex",alignItems:"center",gap:20}}>
+                    <DonutMulti segments={[{value:sevCounts.critical,color:C.crimson},{value:sevCounts.high,color:C.amber},{value:sevCounts.medium,color:"#a78bfa"},{value:sevCounts.low,color:C.green}]} size={130} stroke={16} centerLabel={totalIssues} centerSub="issues"/>
+                    <div style={{flex:1,display:"flex",flexDirection:"column",gap:10}}>
+                      {[["Critical",sevCounts.critical,C.crimson],["High",sevCounts.high,C.amber],["Medium",sevCounts.medium,"#a78bfa"],["Low",sevCounts.low,C.green]].map(([l,n,c])=>(
+                        <div key={l} style={{display:"flex",alignItems:"center",gap:10}}>
+                          <span style={{width:9,height:9,borderRadius:"50%",background:c,flexShrink:0}}/>
+                          <span style={{color:C.text,fontSize:13,flex:1}}>{l}</span>
+                          <span style={{color:C.white,fontSize:14,fontWeight:800}}>{n}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 </div>
 
-                {/* Threats Detected 24h */}
-                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
-                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:16}}>Threats Detected (Last 24h)</div>
-                  <div style={{fontSize:44,fontWeight:900,color:C.white,lineHeight:1,marginBottom:8}}>{threatWeight}</div>
-                  <svg width="100%" height="56" viewBox="0 0 260 40" preserveAspectRatio="none" style={{display:"block",marginBottom:8}}>
-                    <defs><linearGradient id="thGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.crimson} stopOpacity="0.35"/><stop offset="100%" stopColor={C.crimson} stopOpacity="0"/></linearGradient></defs>
-                    <polyline points={spark(threatWeight,true)} fill="none" stroke={C.crimson} strokeWidth="2"/>
-                    <polygon points={`${spark(threatWeight,true)} 260,40 0,40`} fill="url(#thGrad)"/>
-                  </svg>
-                  <div style={{color:sevCounts.critical>0?C.crimson:C.amber,fontSize:13,fontWeight:700}}>
-                    {sevCounts.critical>0?`↑ ${sevCounts.critical} critical need attention`:sevCounts.high>0?`${sevCounts.high} high-severity issues`:"No critical threats"}
-                  </div>
-                </div>
-
                 {/* Top Findings */}
                 <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
-                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:16}}>Top Findings</div>
+                  <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:16}}>Top Priority Findings</div>
                   {topFindings.length===0?(
                     <div style={{color:C.muted,fontSize:13,padding:"12px 0"}}>No findings recorded for this scan.</div>
                   ):(
@@ -4397,27 +4387,35 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
                   )}
                 </div>
 
-                {/* Module scores (Assets Scanned equivalent, real data) */}
+                {/* Module scores as bars */}
                 <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
-                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:16}}>Modules Scanned</div>
-                  <div style={{fontSize:44,fontWeight:900,color:C.white,lineHeight:1,marginBottom:8}}>{totalIssues}</div>
-                  <div style={{color:C.cyan,fontSize:13,fontWeight:700,marginBottom:16}}>total issues across {results.modules_count||2} modules</div>
-                  <svg width="100%" height="44" viewBox="0 0 260 40" preserveAspectRatio="none" style={{display:"block",marginBottom:12}}>
-                    <defs><linearGradient id="asGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.cyan} stopOpacity="0.3"/><stop offset="100%" stopColor={C.cyan} stopOpacity="0"/></linearGradient></defs>
-                    <polyline points={spark(totalIssues,true)} fill="none" stroke={C.cyan} strokeWidth="2"/>
-                    <polygon points={`${spark(totalIssues,true)} 260,40 0,40`} fill="url(#asGrad)"/>
-                  </svg>
-                  {[{label:"Website & Domain",score:websiteScore},{label:"Phishing / Email",score:phishingScore}].map(({label,score})=>(
-                    <div key={label} style={{marginBottom:10}}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                        <span style={{color:C.muted,fontSize:12}}>{label}</span>
-                        <span style={{color:scoreColor(score),fontSize:12,fontWeight:800}}>{score}/100</span>
+                  <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Module Scores</div>
+                  <div style={{color:C.cyan,fontSize:13,fontWeight:700,marginBottom:16}}>{totalIssues} total issues across {results.modules_count||2} modules</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                    {[{icon:"🌐",label:"Website & Domain",score:websiteScore},{icon:"📧",label:"Phishing / Email",score:phishingScore}].map(({icon,label,score})=>(
+                      <div key={label}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                          <span style={{fontSize:15}}>{icon}</span>
+                          <span style={{color:C.white,fontSize:13,fontWeight:600,flex:1}}>{label}</span>
+                          <span style={{color:scoreColor(score),fontSize:14,fontWeight:900}}>{score}/100</span>
+                        </div>
+                        <div style={{height:8,background:C.card,borderRadius:4,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${score}%`,background:scoreColor(score),borderRadius:4,transition:"width 0.8s ease"}}/>
+                        </div>
                       </div>
-                      <div style={{height:5,background:C.card,borderRadius:3,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${score}%`,background:scoreColor(score),borderRadius:3}}/>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                </div>
+
+                {/* Asset comparison bar chart - full width */}
+                <div style={{gridColumn:"1/-1",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
+                  <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:16}}>Asset Risk Comparison</div>
+                  <BarChartLabeled data={[
+                    {label:"Website",value:websiteScore,color:scoreColor(websiteScore)},
+                    ...(results.m365domain?[{label:"Microsoft 365",value:results.m365_score||overallScore,color:scoreColor(results.m365_score||overallScore)}]:[]),
+                    {label:"Phishing/Email",value:phishingScore,color:scoreColor(phishingScore)},
+                    {label:"Overall",value:overallScore,color:scoreColor(overallScore)},
+                  ]} height={150}/>
                 </div>
               </div>
               )}
