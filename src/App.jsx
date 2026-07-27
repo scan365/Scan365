@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.25";
+const APP_VERSION="260725.26";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -3968,9 +3968,6 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
                 </div>
                 );
               })}
-              <div style={{marginTop:"auto",display:"flex",alignItems:"center",gap:12,padding:"11px 14px",color:C.muted,fontSize:13}}>
-                <span style={{fontSize:15,width:18,textAlign:"center"}}>⚙</span>Settings
-              </div>
             </div>
 
             {/* Main dashboard grid */}
