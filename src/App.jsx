@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.29";
+const APP_VERSION="260725.30";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -2273,7 +2273,7 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
       setLoading(false);
     };
     load();
-  },[user?.id]);
+  },[user?.id,user?.total_scans,user?.last_scan_at]);
 
   const latestScan=history[0]||null;
   const overallScore=latestScan?.overall_score||null;
