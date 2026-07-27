@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.24";
+const APP_VERSION="260725.25";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -3729,6 +3729,7 @@ function ScanForm({form,setForm,scanning,scanPct,scanStatus,runScan,isPro,setScr
 function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
   const[pdfDone,setPdfDone]=useState(false);
   const[showReportModal,setShowReportModal]=useState(false);
+  const[navView,setNavView]=useState("Dashboard");
 
   // Support both old format (results.modules) and new real scan format (results.website/email)
   const overallScore=results.overall_score??results.overallScore??0;
@@ -3821,7 +3822,7 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
 
           {/* Action buttons */}
           <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:160}}>
-            <button onClick={()=>setShowReportModal(true)}
+            <button onClick={()=>{setNavView("Dashboard");setShowReportModal(true);}}
               style={{...Sb.ctaBtn,background:"linear-gradient(90deg,#00d4ff,#0066ff)"}}>
               📊 View Full Report
             </button>
@@ -3845,7 +3846,7 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
       <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,overflow:"hidden",marginBottom:16}}>
         <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <span style={{color:C.white,fontWeight:700,fontSize:15}}>🔍 Security Findings ({allFindings.length})</span>
-          <button onClick={()=>setShowReportModal(true)}
+          <button onClick={()=>{setNavView("Dashboard");setShowReportModal(true);}}
             style={{background:"transparent",border:`1px solid ${C.cyan}`,borderRadius:8,padding:"4px 12px",color:C.cyan,cursor:"pointer",fontSize:12,fontWeight:700}}>
             View All →
           </button>
@@ -3867,7 +3868,7 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
             <div style={{textAlign:"center",padding:24,color:C.muted}}>No findings available. Run a new scan to see results.</div>
           )}
           {allFindings.length>5&&(
-            <button onClick={()=>setShowReportModal(true)}
+            <button onClick={()=>{setNavView("Dashboard");setShowReportModal(true);}}
               style={{...Sb.ctaBtn,background:"transparent",border:`1px solid ${C.border}`,color:C.muted,fontSize:12}}>
               Show {allFindings.length-5} more findings →
             </button>
@@ -3912,14 +3913,27 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
         const sevRank={critical:0,high:1,medium:2,low:3,pass:4,info:5};
         const topFindings=[...allFindings].sort((a,b)=>(sevRank[a.severity||a.sev]??9)-(sevRank[b.severity||b.sev]??9)).slice(0,5);
         const navItems=[
-          {icon:"▦",label:"Dashboard",active:true},
+          {icon:"▦",label:"Dashboard"},
           {icon:"◈",label:"Assets"},
           {icon:"◉",label:"Vulnerabilities"},
           {icon:"⚠",label:"Threats"},
           {icon:"⚙",label:"Misconfigurations"},
           {icon:"▤",label:"Compliance"},
           {icon:"▣",label:"Reports"},
+          {icon:"⚙",label:"Settings"},
         ];
+        const _sev=(f)=>f.severity||f.sev||"low";
+        // What each nav view shows, filtered from the real findings
+        const viewFindings={
+          Vulnerabilities:allFindings,
+          Threats:allFindings.filter(f=>["critical","high"].includes(_sev(f))),
+          Misconfigurations:allFindings.filter(f=>["medium","low"].includes(_sev(f))),
+        };
+        const viewMeta={
+          Vulnerabilities:{title:"All Vulnerabilities",blurb:"Every finding from this scan, all severities."},
+          Threats:{title:"Active Threats",blurb:"Critical and high-severity findings that need attention first."},
+          Misconfigurations:{title:"Misconfigurations",blurb:"Medium and low-severity configuration issues to review."},
+        };
         // Sparkline generator
         const spark=(seed,up)=>{
           const pts=[];for(let i=0;i<12;i++){const base=up?i*3:6;pts.push(20-(base+Math.sin(i*1.3+seed)*6+seed%5));}
@@ -3944,11 +3958,16 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
           <div style={{display:"flex",flex:1,minHeight:0}}>
             {/* Left nav rail */}
             <div style={{width:210,flexShrink:0,borderRight:`1px solid ${C.border}`,background:C.surface,padding:"18px 12px",display:"flex",flexDirection:"column",gap:4}}>
-              {navItems.map(({icon,label,active})=>(
-                <div key={label} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderRadius:10,background:active?"linear-gradient(90deg,#00d4ff22,#0066ff11)":"transparent",border:`1px solid ${active?C.cyan:"transparent"}`,cursor:"pointer",color:active?C.cyan:C.muted,fontSize:13,fontWeight:active?700:500}}>
+              {navItems.map(({icon,label})=>{
+                const active=navView===label;
+                return(
+                <div key={label} onClick={()=>{label==="Reports"?handlePDF():setNavView(label);}} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderRadius:10,background:active?"linear-gradient(90deg,#00d4ff22,#0066ff11)":"transparent",border:`1px solid ${active?C.cyan:"transparent"}`,cursor:"pointer",color:active?C.cyan:C.muted,fontSize:13,fontWeight:active?700:500}}
+                  onMouseOver={e=>{if(!active)e.currentTarget.style.background=C.card;}}
+                  onMouseOut={e=>{if(!active)e.currentTarget.style.background="transparent";}}>
                   <span style={{fontSize:15,width:18,textAlign:"center"}}>{icon}</span>{label}
                 </div>
-              ))}
+                );
+              })}
               <div style={{marginTop:"auto",display:"flex",alignItems:"center",gap:12,padding:"11px 14px",color:C.muted,fontSize:13}}>
                 <span style={{fontSize:15,width:18,textAlign:"center"}}>⚙</span>Settings
               </div>
@@ -3956,6 +3975,7 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
 
             {/* Main dashboard grid */}
             <div style={{flex:1,padding:"24px",overflowY:"auto"}}>
+              {navView==="Dashboard"&&(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(340px,1fr))",gap:20}}>
 
                 {/* Risk Overview - donut */}
@@ -4046,39 +4066,156 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
                   ))}
                 </div>
               </div>
+              )}
 
-              {/* All findings detail list */}
-              <div style={{marginTop:24}}>
-                <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:14}}>All Security Findings ({allFindings.length})</div>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {allFindings.map((f,i)=>{
-                    const sev=f.severity||f.sev;
-                    return(
-                      <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:16,borderLeft:`3px solid ${severityColor(sev)}`}}>
-                        <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                          <span style={{fontSize:16,flexShrink:0}}>{severityIcon(sev)}</span>
-                          <div style={{flex:1}}>
-                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
-                              <span style={{color:C.white,fontWeight:700,fontSize:14}}>{f.title}</span>
-                              <span style={{color:severityColor(sev),fontSize:10,fontWeight:800,textTransform:"uppercase",background:C.card,borderRadius:5,padding:"2px 7px"}}>{sev}</span>
-                            </div>
-                            {f.detail&&<div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>{f.detail}</div>}
-                            {f.fix&&(
-                              <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",marginTop:8}}>
-                                <div style={{color:C.cyan,fontSize:11,fontWeight:700,marginBottom:4}}>💡 HOW TO FIX:</div>
-                                <pre style={{color:C.text,fontSize:11,lineHeight:1.6,whiteSpace:"pre-wrap",fontFamily:"inherit",margin:0}}>{f.fix}</pre>
+              {/* Assets view */}
+              {navView==="Assets"&&(
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20}}>
+                  {[
+                    {icon:"🌐",name:domain||"Website domain",type:"Website & Domain",score:websiteScore},
+                    ...(results.m365domain?[{icon:"☁️",name:results.m365domain,type:"Microsoft 365 tenant",score:results.m365_score||overallScore}]:[]),
+                    {icon:"📧",name:domain||"Mail domain",type:"Email / Phishing surface",score:phishingScore},
+                  ].map((a,i)=>(
+                    <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:20}}>
+                      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+                        <span style={{fontSize:26}}>{a.icon}</span>
+                        <div><div style={{color:C.white,fontWeight:700,fontSize:15}}>{a.name}</div><div style={{color:C.muted,fontSize:12}}>{a.type}</div></div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{color:C.muted,fontSize:12}}>Risk score</span>
+                        <span style={{color:scoreColor(a.score),fontSize:18,fontWeight:900}}>{a.score}/100</span>
+                      </div>
+                      <div style={{height:6,background:C.card,borderRadius:3,marginTop:8,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${a.score}%`,background:scoreColor(a.score),borderRadius:3}}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Compliance view */}
+              {navView==="Compliance"&&(
+                <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                  <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:24}}>
+                    <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:16}}>Compliance Posture</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14}}>
+                      {[
+                        {label:"Overall Score",val:`${overallScore}/100`,color:scoreColor(overallScore)},
+                        {label:"Critical Open",val:sevCounts.critical,color:C.crimson},
+                        {label:"High Open",val:sevCounts.high,color:C.amber},
+                        {label:"Total Findings",val:allFindings.length,color:C.cyan},
+                      ].map(({label,val,color})=>(
+                        <div key={label} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,textAlign:"center"}}>
+                          <div style={{fontSize:26,fontWeight:900,color}}>{val}</div>
+                          <div style={{color:C.muted,fontSize:11,fontWeight:600,marginTop:4}}>{label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{background:"#0a1e33",border:`1px solid ${C.cyan}`,borderRadius:12,padding:16}}>
+                    <div style={{color:C.cyan,fontSize:12,fontWeight:700,marginBottom:6}}>ℹ️ ACSC Essential Eight & M365 compliance</div>
+                    <div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>Full Essential Eight (ML0-ML3) and Microsoft 365 configuration auditing are Pro modules. Upgrade to unlock complete compliance reporting for {domain}.</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Settings view */}
+              {navView==="Settings"&&(
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:24,maxWidth:520}}>
+                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:16}}>Scan Details</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {[
+                      ["Domain",domain||"—"],
+                      ["M365 Tenant",results.m365domain||"Not specified"],
+                      ["Scanned",scannedAt?new Date(scannedAt).toLocaleString("en-AU"):"—"],
+                      ["Risk Level",riskLevel],
+                      ["Overall Score",`${overallScore}/100`],
+                      ["Modules",`${results.modules_count||2} scanned`],
+                      ["Total Findings",String(allFindings.length)],
+                    ].map(([k,v])=>(
+                      <div key={k} style={{display:"flex",gap:12,fontSize:13,borderBottom:`1px solid ${C.border}`,paddingBottom:8}}>
+                        <span style={{color:C.muted,minWidth:120}}>{k}</span>
+                        <span style={{color:C.white,fontWeight:600}}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Filtered findings views: Vulnerabilities / Threats / Misconfigurations */}
+              {viewFindings[navView]&&(
+                <div>
+                  <div style={{marginBottom:16}}>
+                    <div style={{color:C.white,fontWeight:800,fontSize:18}}>{viewMeta[navView].title} ({viewFindings[navView].length})</div>
+                    <div style={{color:C.muted,fontSize:13,marginTop:4}}>{viewMeta[navView].blurb}</div>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {viewFindings[navView].map((f,i)=>{
+                      const sev=_sev(f);
+                      return(
+                        <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:16,borderLeft:`3px solid ${severityColor(sev)}`}}>
+                          <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                            <span style={{fontSize:16,flexShrink:0}}>{severityIcon(sev)}</span>
+                            <div style={{flex:1}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                                <span style={{color:C.white,fontWeight:700,fontSize:14}}>{f.title}</span>
+                                <span style={{color:severityColor(sev),fontSize:10,fontWeight:800,textTransform:"uppercase",background:C.card,borderRadius:5,padding:"2px 7px"}}>{sev}</span>
                               </div>
-                            )}
+                              {f.detail&&<div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>{f.detail}</div>}
+                              {f.fix&&(
+                                <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",marginTop:8}}>
+                                  <div style={{color:C.cyan,fontSize:11,fontWeight:700,marginBottom:4}}>💡 HOW TO FIX:</div>
+                                  <pre style={{color:C.text,fontSize:11,lineHeight:1.6,whiteSpace:"pre-wrap",fontFamily:"inherit",margin:0}}>{f.fix}</pre>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
+                      );
+                    })}
+                    {viewFindings[navView].length===0&&(
+                      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:32,textAlign:"center",color:C.muted,fontSize:13}}>
+                        {navView==="Threats"?"No critical or high-severity threats found. 🎉":navView==="Misconfigurations"?"No medium or low misconfigurations found.":"No findings available for this scan."}
                       </div>
-                    );
-                  })}
-                  {allFindings.length===0&&<div style={{color:C.muted,fontSize:13,textAlign:"center",padding:24}}>No findings available for this scan.</div>}
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* ITSL contact */}
+              {/* On the Dashboard only: full findings list below the panels */}
+              {navView==="Dashboard"&&(
+                <div style={{marginTop:24}}>
+                  <div style={{color:C.white,fontWeight:700,fontSize:15,marginBottom:14}}>All Security Findings ({allFindings.length})</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {allFindings.map((f,i)=>{
+                      const sev=_sev(f);
+                      return(
+                        <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:16,borderLeft:`3px solid ${severityColor(sev)}`}}>
+                          <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                            <span style={{fontSize:16,flexShrink:0}}>{severityIcon(sev)}</span>
+                            <div style={{flex:1}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                                <span style={{color:C.white,fontWeight:700,fontSize:14}}>{f.title}</span>
+                                <span style={{color:severityColor(sev),fontSize:10,fontWeight:800,textTransform:"uppercase",background:C.card,borderRadius:5,padding:"2px 7px"}}>{sev}</span>
+                              </div>
+                              {f.detail&&<div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>{f.detail}</div>}
+                              {f.fix&&(
+                                <div style={{background:"#0a1e33",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",marginTop:8}}>
+                                  <div style={{color:C.cyan,fontSize:11,fontWeight:700,marginBottom:4}}>💡 HOW TO FIX:</div>
+                                  <pre style={{color:C.text,fontSize:11,lineHeight:1.6,whiteSpace:"pre-wrap",fontFamily:"inherit",margin:0}}>{f.fix}</pre>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {allFindings.length===0&&<div style={{color:C.muted,fontSize:13,textAlign:"center",padding:24}}>No findings available for this scan.</div>}
+                  </div>
+                </div>
+              )}
+
+              {/* ITSL contact - shown on all views */}
               <div style={{background:"#0a1e33",border:`1px solid ${C.cyan}`,borderRadius:12,padding:16,marginTop:24,textAlign:"center"}}>
                 <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:6}}>Need help fixing these issues?</div>
                 <div style={{color:C.muted,fontSize:12,marginBottom:10}}>IT Service Link provides expert cybersecurity remediation for Australian businesses.</div>
