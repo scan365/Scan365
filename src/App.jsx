@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.26";
+const APP_VERSION="260725.27";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -335,22 +335,99 @@ function generatePDF(results,isPro,userName){
   });
   y+=42;
   // ITSL Contact box
-  checkY(44);
-  doc.setFillColor(0,26,51);doc.roundedRect(margin,y,cw,42,3,3,"F");
-  doc.setDrawColor(0,212,255);doc.setLineWidth(0.5);doc.roundedRect(margin,y,cw,42,3,3,"S");
+  checkY(46);
+  doc.setFillColor(0,26,51);doc.roundedRect(margin,y,cw,44,3,3,"F");
+  doc.setDrawColor(0,212,255);doc.setLineWidth(0.5);doc.roundedRect(margin,y,cw,44,3,3,"S");
   doc.setFillColor(0,102,255);doc.roundedRect(margin,y,cw,10,3,3,"F");
   doc.setTextColor(255,255,255);doc.setFontSize(9);doc.setFont("helvetica","bold");
   doc.text("NEED HELP FIXING THESE ISSUES? CONTACT IT SERVICE LINK",pw/2,y+7,{align:"center"});
   doc.setFont("helvetica","normal");doc.setFontSize(8);
   [
-    ["🏢 Company:","IT Service Link | Microsoft AI Cloud Partner | ABN 78 336 526 604"],
-    ["📧 Email:","admin@itsl.com.au (Security Team) | sales@itsl.com.au (Sales)"],
-    ["🌐 Website:","www.itsl.au | www.scan365.ai"],
-    ["📍 Location:","Sydney NSW Australia | Available 24/7 for urgent security incidents"],
+    ["Company:","IT Service Link | Microsoft AI Cloud Partner | ABN 78 336 526 604"],
+    ["Phone:","Cybersecurity Support Team: (02) 8631 8440"],
+    ["Email:","admin@itsl.com.au (Security Team) | sales@itsl.com.au (Sales)"],
+    ["Website:","www.itsl.au | www.scan365.ai"],
+    ["Location:","Sydney NSW Australia | Available 24/7 for urgent security incidents"],
   ].forEach(([label,val],i)=>{
-    doc.setTextColor(0,212,255);doc.text(label,margin+6,y+16+(i*6.5));
-    doc.setTextColor(226,234,244);doc.text(val,margin+32,y+16+(i*6.5));
+    doc.setTextColor(0,212,255);doc.text(label,margin+6,y+15+(i*5.5));
+    doc.setTextColor(226,234,244);doc.text(val,margin+30,y+15+(i*5.5));
   });
+  // ── EXTRA SECTIONS: Assets, Severity Breakdown, Compliance, FAQ, Overview ──
+  const _sectionHeader=(txt)=>{
+    checkY(14);y+=6;
+    doc.setFontSize(11);doc.setFont("helvetica","bold");doc.setTextColor(0,212,255);doc.text(txt,margin,y);y+=4;
+    doc.setDrawColor(0,212,255);doc.setLineWidth(0.3);doc.line(margin,y,pw-margin,y);y+=8;
+  };
+  const _allFindings=Object.values(results.modules).flatMap(m=>m.findings||[]);
+  const _count=(sev)=>_allFindings.filter(f=>(f.sev||f.severity)===sev).length;
+
+  // Assets section
+  doc.addPage();doc.setFillColor(8,15,26);doc.rect(0,0,210,297,"F");y=20;
+  _sectionHeader("SCANNED ASSETS");
+  const _assets=[
+    ["Website & Domain",results.domain||"-",results.modules.website?.score??results.overallScore],
+    ...(results.m365domain?[["Microsoft 365 Tenant",results.m365domain,results.overallScore]]:[]),
+    ["Email / Phishing Surface",results.domain||"-",results.modules.phishing?.score??results.overallScore],
+  ];
+  _assets.forEach(([name,target,score])=>{
+    checkY(16);
+    const aRgb=scoreColor(score)==="#10b981"?[16,185,129]:scoreColor(score)==="#f59e0b"?[245,158,11]:[239,68,68];
+    doc.setFillColor(14,29,47);doc.roundedRect(margin,y,cw,13,2,2,"F");
+    doc.setTextColor(226,234,244);doc.setFontSize(9);doc.setFont("helvetica","bold");doc.text(name,margin+5,y+6);
+    doc.setTextColor(90,122,150);doc.setFontSize(7);doc.setFont("helvetica","normal");doc.text(String(target),margin+5,y+10.5);
+    doc.setTextColor(...aRgb);doc.setFontSize(11);doc.setFont("helvetica","bold");doc.text(`${score}/100`,pw-margin-5,y+8,{align:"right"});
+    y+=16;
+  });
+
+  // Severity breakdown (Threats / Misconfigurations grouping)
+  _sectionHeader("FINDINGS BY CATEGORY");
+  [
+    ["Threats (Critical + High)",_count("critical")+_count("high"),"These require the most urgent attention. Address critical items within 24 hours and high items within 7 days.",[239,68,68]],
+    ["Misconfigurations (Medium + Low)",_count("medium")+_count("low"),"Configuration weaknesses to schedule into your normal maintenance cycle within 30 days.",[245,158,11]],
+    ["Total Vulnerabilities",_allFindings.length,"All findings across every scanned module for this assessment.",[0,212,255]],
+  ].forEach(([label,n,desc,clr])=>{
+    checkY(18);
+    doc.setFillColor(14,29,47);doc.roundedRect(margin,y,cw,16,2,2,"F");doc.setDrawColor(...clr);doc.setLineWidth(0.4);doc.roundedRect(margin,y,cw,16,2,2,"S");
+    doc.setTextColor(...clr);doc.setFontSize(14);doc.setFont("helvetica","bold");doc.text(String(n),margin+6,y+10);
+    doc.setTextColor(226,234,244);doc.setFontSize(9);doc.setFont("helvetica","bold");doc.text(label,margin+22,y+6);
+    doc.setTextColor(90,122,150);doc.setFontSize(7);doc.setFont("helvetica","normal");
+    doc.splitTextToSize(desc,cw-28).forEach((l,li)=>doc.text(l,margin+22,y+10.5+(li*3.5)));
+    y+=19;
+  });
+
+  // Compliance
+  _sectionHeader("COMPLIANCE POSTURE");
+  doc.setFillColor(14,29,47);doc.roundedRect(margin,y,cw,26,2,2,"F");
+  doc.setTextColor(226,234,244);doc.setFontSize(8);doc.setFont("helvetica","normal");
+  doc.splitTextToSize(`Overall security score: ${results.overallScore}/100 (${scoreLabel(results.overallScore)}). This free assessment covers Website/Domain and Phishing/Email surfaces. Full ACSC Essential Eight (ML0-ML3) maturity assessment and Microsoft 365 configuration auditing are available on the Pro plan for complete compliance coverage.`,cw-10).forEach((l,li)=>doc.text(l,margin+5,y+7+(li*4.5)));
+  y+=30;
+
+  // FAQ
+  doc.addPage();doc.setFillColor(8,15,26);doc.rect(0,0,210,297,"F");y=20;
+  _sectionHeader("FREQUENTLY ASKED QUESTIONS");
+  [
+    ["What does my risk score mean?","Scores run 0-100, where higher is safer. 70+ is low risk, 45-69 is medium, below 45 is high risk. Your overall score is the average across all scanned areas."],
+    ["Why does each asset have a different score?","Each surface (website, email, cloud) is assessed separately so a strong area cannot mask a weak one. Fixing the lowest-scoring asset first gives the biggest improvement."],
+    ["How do I reduce my risk score?","Work through findings from Critical down to Low. Each finding in this report includes a HOW TO FIX action. Re-scan after changes to confirm your score has improved."],
+    ["How often should I scan?","At least monthly, and after any major change to your website, DNS, or Microsoft 365 configuration. Pro plans include unlimited scans and historical trend tracking."],
+    ["Is my data secure?","Yes. All scan data is stored encrypted in Sydney, Australia and is never sold or shared. Reports are confidential to your organisation."],
+  ].forEach(([q,a])=>{
+    checkY(20);
+    doc.setTextColor(0,212,255);doc.setFontSize(9);doc.setFont("helvetica","bold");
+    doc.splitTextToSize("Q: "+q,cw).forEach((l,li)=>doc.text(l,margin,y+(li*4.5)));
+    y+=doc.splitTextToSize("Q: "+q,cw).length*4.5+1;
+    doc.setTextColor(226,234,244);doc.setFontSize(8);doc.setFont("helvetica","normal");
+    doc.splitTextToSize(a,cw).forEach((l,li)=>doc.text(l,margin,y+(li*4)));
+    y+=doc.splitTextToSize(a,cw).length*4+5;
+  });
+
+  // Scan365.ai overview
+  _sectionHeader("ABOUT SCAN365.AI");
+  doc.setFillColor(0,26,51);doc.roundedRect(margin,y,cw,34,3,3,"F");doc.setDrawColor(0,212,255);doc.setLineWidth(0.4);doc.roundedRect(margin,y,cw,34,3,3,"S");
+  doc.setTextColor(226,234,244);doc.setFontSize(8);doc.setFont("helvetica","normal");
+  doc.splitTextToSize("Scan365.ai is an AI-powered cybersecurity risk scanning platform built and operated by IT Service Link in Sydney, Australia. It assesses your Website & Domain security, Microsoft 365 & Cloud configuration, ACSC Essential Eight maturity, and Phishing/Email risk, then delivers a clear risk score with prioritised, actionable remediation guidance. Businesses use Scan365.ai to understand their cyber risk in minutes and to work with the IT Service Link team on fixing what matters most.",cw-10).forEach((l,li)=>doc.text(l,margin+5,y+7+(li*4.5)));
+  y+=38;
+
   const pages=doc.internal.getNumberOfPages();
   for(let i=1;i<=pages;i++){
     doc.setPage(i);doc.setFillColor(10,30,50);doc.rect(0,284,210,13,"F");doc.setDrawColor(30,58,82);doc.line(0,284,210,284);
@@ -790,9 +867,7 @@ function AuthModal({onClose,onLogin,onForgotPassword}){
               <div style={{color:C.muted,fontSize:12,marginTop:4}}>Choose your verification method</div>
             </div>
             {[
-              {key:"totp",icon:<svg width="22" height="22" viewBox="0 0 24 24"><rect x="1" y="1" width="10.5" height="10.5" fill="#F25022"/><rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00"/><rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF"/><rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900"/></svg>,title:"Microsoft Authenticator",desc:"Scan QR. Most secure. Works offline.",badge:"Recommended"},
-              {key:"sms",icon:<span style={{fontSize:18}}>💬</span>,title:"SMS Text Message",desc:"6-digit code sent to your mobile phone"},
-              {key:"email",icon:<span style={{fontSize:18}}>📧</span>,title:"Email Code",desc:`Code sent to ${pendingUser?.email||"your email"}`},
+              {key:"totp",icon:<span style={{display:"flex",alignItems:"center",gap:3}}><svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg><svg width="18" height="18" viewBox="0 0 24 24"><rect x="1" y="1" width="10.5" height="10.5" fill="#F25022"/><rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00"/><rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF"/><rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900"/></svg></span>,title:"Authenticator App",desc:"Google or Microsoft Authenticator. Scan QR. Most secure, works offline.",badge:"Recommended"},
               {key:"skip",icon:<span style={{fontSize:18}}>⏩</span>,title:"Skip for Now",desc:"Set up MFA later in Settings"},
             ].map(({key,icon,title,desc,badge})=>(
               <button key={key} onClick={()=>handleMFAChoice(key)}
@@ -821,9 +896,9 @@ function AuthModal({onClose,onLogin,onForgotPassword}){
         {mfaScreen==="totp"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <MFABackBtn onClick={()=>{setMfaScreen("choice");setError("");setDevCode("");setMfaCode(["","","","","",""]);}} />
-            <div style={{color:C.white,fontWeight:700,fontSize:14,textAlign:"center"}}>Microsoft Authenticator</div>
+            <div style={{color:C.white,fontWeight:700,fontSize:14,textAlign:"center"}}>Authenticator App</div>
             <div style={{background:C.card,borderRadius:8,padding:10,fontSize:11,color:C.muted,lineHeight:1.6}}>
-              Open Microsoft Authenticator → tap <strong style={{color:C.cyan}}>+</strong> → <strong style={{color:C.cyan}}>Other account</strong> → scan QR below
+              Open Google or Microsoft Authenticator → tap <strong style={{color:C.cyan}}>+</strong> → <strong style={{color:C.cyan}}>Other account</strong> → scan QR below
             </div>
             <div style={{textAlign:"center"}}>
               <div style={{background:"#fff",borderRadius:10,padding:8,display:"inline-block",boxShadow:"0 0 0 3px #00d4ff40"}}>
@@ -3974,6 +4049,14 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
             <div style={{flex:1,padding:"24px",overflowY:"auto"}}>
               {navView==="Dashboard"&&(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(340px,1fr))",gap:20}}>
+
+                {/* How to read this dashboard - full width explainer */}
+                <div style={{gridColumn:"1/-1",background:"#0a1e33",border:`1px solid ${C.cyan}`,borderRadius:14,padding:"16px 20px"}}>
+                  <div style={{color:C.cyan,fontWeight:700,fontSize:13,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>💡 How to read this report</div>
+                  <div style={{color:C.text,fontSize:13,lineHeight:1.7}}>
+                    Your <strong style={{color:C.white}}>overall risk score ({overallScore}/100, {riskLevel})</strong> is the average across every area we scanned. It gives you one headline number for your whole security posture. Each <strong style={{color:C.white}}>asset</strong> (your website, email, and cloud) also gets its own score, so a strong area and a weak area don't hide each other. A <strong style={{color:C.green}}>higher score is better</strong> (closer to 100 = lower risk). Open <strong style={{color:C.white}}>Vulnerabilities</strong>, <strong style={{color:C.white}}>Threats</strong> and <strong style={{color:C.white}}>Misconfigurations</strong> in the left menu to see exactly what to fix, and how.
+                  </div>
+                </div>
 
                 {/* Risk Overview - donut */}
                 <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
