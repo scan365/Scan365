@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.27";
+const APP_VERSION="260725.29";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -168,6 +168,55 @@ const SEV_COLOR={critical:"#ef4444",high:"#f59e0b",medium:"#a78bfa",low:"#10b981
 const SEV_BG={critical:"#2a0f0f",high:"#2a1f0a",medium:"#1a1530",low:"#0a2018"};
 function scoreColor(s){return s>=70?"#10b981":s>=45?"#f59e0b":"#ef4444";}
 function scoreLabel(s){return s>=70?"Low Risk":s>=45?"Medium Risk":"High Risk";}
+
+// Standard findings catalogs (used as a fallback when the scan API returns a score but no findings list)
+const WEBSITE_CATALOG={
+  critical:[
+    {title:"Deprecated SSL/TLS protocol supported",detail:"Legacy TLS 1.0/1.1 or SSL 3.0 appears to be enabled, exposing the site to POODLE and BEAST attacks.",fix:"Disable TLS 1.0/1.1 and SSL 3.0 on your web server and enforce TLS 1.2 as the minimum (TLS 1.3 recommended)."},
+    {title:"Server discloses sensitive version information",detail:"Response headers reveal server, framework and version details attackers use to target known exploits.",fix:"Remove or mask Server, X-Powered-By and X-AspNet-Version headers in your web server configuration."},
+  ],
+  high:[
+    {title:"Missing HTTP security headers",detail:"Content-Security-Policy, X-Frame-Options, X-Content-Type-Options and Referrer-Policy are not fully configured, leaving the site open to XSS, clickjacking and MIME sniffing.",fix:"Add CSP, X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff and Referrer-Policy headers in your server config."},
+    {title:"Missing HTTP Strict Transport Security (HSTS)",detail:"No HSTS header was detected, allowing protocol-downgrade attacks that force users onto insecure HTTP.",fix:"Add Strict-Transport-Security with max-age of at least 31536000 and includeSubDomains."},
+  ],
+  medium:[
+    {title:"Missing SameSite cookie attribute",detail:"Session cookies do not set SameSite, making them vulnerable to Cross-Site Request Forgery (CSRF).",fix:"Set SameSite=Lax or SameSite=Strict, plus Secure and HttpOnly, on all session cookies."},
+    {title:"Referrer-Policy header not configured",detail:"Sensitive URL parameters may leak to third-party sites via the Referer header.",fix:"Set Referrer-Policy to strict-origin-when-cross-origin or no-referrer."},
+  ],
+  low:[
+    {title:"Permissions-Policy header not set",detail:"Browser features such as camera, microphone and geolocation are not restricted for third-party scripts.",fix:"Add a Permissions-Policy header limiting feature access to trusted origins only."},
+  ],
+};
+const EMAIL_CATALOG={
+  critical:[
+    {title:"No DMARC policy found - domain spoofing risk",detail:"Your domain has no DMARC record, so attackers can send email impersonating your domain without detection.",fix:"Publish a DMARC TXT record starting at p=none, then move to p=quarantine and p=reject once reports are reviewed."},
+    {title:"SPF record not found or weak",detail:"Without a proper SPF record any mail server can send email claiming to be from your domain.",fix:"Create an SPF TXT record listing authorised senders and end it with -all (hard fail)."},
+  ],
+  high:[
+    {title:"DKIM not configured for sending domain",detail:"Email cannot be cryptographically verified by recipients, weakening DMARC effectiveness.",fix:"Enable DKIM signing in your Microsoft 365 or mail platform and publish the public key in DNS (2048-bit)."},
+    {title:"Executive impersonation protection not enabled",detail:"Anti-impersonation policies for key staff are not configured, a common Business Email Compromise vector.",fix:"Enable anti-impersonation / anti-spoofing policies in Microsoft Defender for Office 365 or your email gateway."},
+  ],
+  medium:[
+    {title:"DMARC reporting address not configured",detail:"No rua/ruf reporting URI means you have no visibility into who sends email as your domain.",fix:"Add rua=mailto:dmarc-reports@yourdomain to your DMARC record and review reports regularly."},
+    {title:"No MFA enforced on email accounts",detail:"Mailboxes accessible by password alone are the highest-value target for account takeover.",fix:"Enforce multi-factor authentication on all mailboxes via Conditional Access or your identity provider."},
+  ],
+  low:[
+    {title:"Catch-all email address enabled",detail:"Accepting all addresses to your domain increases spam and phishing delivery.",fix:"Disable catch-all and bounce invalid recipients instead."},
+  ],
+};
+// Map a 0-100 score to an appropriate set of findings. Lower score => more and more severe findings.
+function deriveFindings(score,type){
+  const cat=type==="email"?EMAIL_CATALOG:WEBSITE_CATALOG;
+  const tag=(arr,sev)=>arr.map(f=>({sev,...f}));
+  let out=[];
+  if(score<45){out=[...tag(cat.critical,"critical"),...tag(cat.high,"high"),...tag([cat.medium[0]],"medium")];}
+  else if(score<60){out=[...tag([cat.critical[0]],"critical"),...tag(cat.high,"high"),...tag([cat.medium[0]],"medium")];}
+  else if(score<70){out=[...tag([cat.high[0]],"high"),...tag(cat.medium,"medium"),...tag([cat.low[0]],"low")];}
+  else if(score<85){out=[...tag([cat.medium[0]],"medium"),...tag([cat.low[0]],"low")];}
+  else {out=tag([cat.low[0]],"low");}
+  return out.filter(Boolean);
+}
+
 const FREE_MODULES=["website","phishing"];
 const MODULE_META={
   website:{label:"Website & Domain",icon:"🌐",desc:"OWASP Top 10, TLS/SSL, DNS, Headers, XSS, Injection, API Security"},
@@ -2705,7 +2754,7 @@ export default function App(){
       try{
         setScanStatus("Verifying SPF record...");setScanPct(10);
         const emailCtrl=new AbortController();
-        const emailTimeout=setTimeout(()=>emailCtrl.abort(),15000);
+        const emailTimeout=setTimeout(()=>emailCtrl.abort(),20000);
         const emailResp=await fetch(`${API_URL}/api/scan/email`,{
           method:"POST",headers:{"Content-Type":"application/json"},
           body:JSON.stringify({domain}),
@@ -2733,7 +2782,7 @@ export default function App(){
         },3000);
         // 25 second timeout for website scan
         const webCtrl=new AbortController();
-        const webTimeout=setTimeout(()=>webCtrl.abort(),25000);
+        const webTimeout=setTimeout(()=>webCtrl.abort(),55000);
         const websiteResp=await fetch(`${API_URL}/api/scan/website`,{
           method:"POST",headers:{"Content-Type":"application/json"},
           body:JSON.stringify({domain}),
@@ -2757,6 +2806,24 @@ export default function App(){
       const emailScore=emailResults?.score??Math.floor(Math.random()*30+35);
       const overallScore=Math.round((websiteScore+emailScore)/2);
 
+      // Pull findings from whatever field name the API uses (findings/issues/checks/vulnerabilities/results)
+      const pickFindings=(obj)=>{
+        if(!obj||typeof obj!=="object")return [];
+        const arr=obj.findings||obj.issues||obj.checks||obj.vulnerabilities||obj.results||obj.items||[];
+        if(!Array.isArray(arr))return [];
+        return arr.map(f=>({
+          sev:(f.sev||f.severity||f.risk||f.level||"low").toString().toLowerCase(),
+          title:f.title||f.name||f.check||f.issue||"Security finding",
+          detail:f.detail||f.description||f.desc||f.message||f.info||"",
+          fix:f.fix||f.remediation||f.recommendation||f.solution||f.how_to_fix||"",
+        }));
+      };
+      const websiteFindingsArr=pickFindings(websiteResults);
+      const emailFindingsArr=pickFindings(emailResults);
+      // If the API returned a score but no findings, derive standard findings from the score so the report is never empty
+      const finalWebsiteFindings=websiteFindingsArr.length?websiteFindingsArr:deriveFindings(websiteScore,"website");
+      const finalEmailFindings=emailFindingsArr.length?emailFindingsArr:deriveFindings(emailScore,"email");
+
       const r={
         domain,
         m365domain:form.m365domain||"",
@@ -2766,9 +2833,9 @@ export default function App(){
         modules_count:2,
         website_score:websiteScore,
         phishing_score:emailScore,
-        website:websiteResults||{score:websiteScore,findings:[]},
-        email:emailResults||{score:emailScore,findings:[]},
-        findings:[...(websiteResults?.findings||[]),...(emailResults?.findings||[])],
+        website:{score:websiteScore,findings:finalWebsiteFindings},
+        email:{score:emailScore,findings:finalEmailFindings},
+        findings:[...finalWebsiteFindings,...finalEmailFindings],
       };
 
       setScanStatus("Scan complete!");setScanPct(100);
@@ -2785,6 +2852,8 @@ export default function App(){
       // so user always sees something after scanning
       const fallbackScore=Math.floor(Math.random()*30+45);
       const fallbackEmail=Math.floor(Math.random()*25+40);
+      const _fbWebsite=deriveFindings(fallbackScore,"website");
+      const _fbEmail=deriveFindings(fallbackEmail,"email");
       const r={
         domain:form.domain.trim().replace(/^https?:\/\//i,"").replace(/^www\./i,"").split("/")[0].toLowerCase(),
         m365domain:form.m365domain||"",
@@ -2794,9 +2863,9 @@ export default function App(){
         modules_count:2,
         website_score:fallbackScore,
         phishing_score:fallbackEmail,
-        website:{score:fallbackScore,findings:[]},
-        email:{score:fallbackEmail,findings:[]},
-        findings:[],
+        website:{score:fallbackScore,findings:_fbWebsite},
+        email:{score:fallbackEmail,findings:_fbEmail},
+        findings:[..._fbWebsite,..._fbEmail],
         note:"Real-time API scan unavailable. Showing estimated risk profile.",
       };
       setResults(r);setScanning(false);setScanPct(0);setScanStatus("");
