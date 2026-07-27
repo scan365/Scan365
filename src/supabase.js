@@ -192,8 +192,16 @@ export async function saveScan(userId, scanData, isPro) {
     await supabase.from('scan_findings').insert(findings);
   }
 
-  // Increment user scan count
-  await supabase.rpc('increment_scan_count', { user_id_param: userId });
+  // Increment user scan count. Try the RPC first; if it's missing/fails, update the row directly.
+  const rpcRes = await supabase.rpc('increment_scan_count', { user_id_param: userId });
+  if (rpcRes.error) {
+    const { data: u } = await supabase.from('users').select('total_scans, monthly_scans').eq('id', userId).single();
+    await supabase.from('users').update({
+      total_scans: (u?.total_scans || 0) + 1,
+      monthly_scans: (u?.monthly_scans || 0) + 1,
+      last_scan_at: new Date().toISOString(),
+    }).eq('id', userId);
+  }
 
   await logAudit(userId, 'scan_completed', 'scans', scan.id, { domain: scanData.domain, score: overall });
   return { scan };

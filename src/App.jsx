@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.31";
+const APP_VERSION="260725.32";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -789,6 +789,7 @@ function AuthModal({onClose,onLogin,onForgotPassword}){
   const[error,setError]=useState("");
   const[loading,setLoading]=useState(false);
   const[mfaScreen,setMfaScreen]=useState("");
+  const[mfaApp,setMfaApp]=useState("");
   const[mfaCode,setMfaCode]=useState(["","","","","",""]);
   const[smsPhone,setSmsPhone]=useState("");
   const[smsCountry,setSmsCountry]=useState("+61");
@@ -853,6 +854,7 @@ function AuthModal({onClose,onLogin,onForgotPassword}){
   const handleMFAChoice=(method)=>{
     setMfaCode(["","","","","",""]);setError("");setDevCode("");
     if(method==="skip"){onLogin(pendingUser);onClose();return;}
+    if(method==="google"||method==="microsoft"){setMfaApp(method);setMfaScreen("totp");return;}
     if(method==="email"){setDevCode(Math.floor(100000+Math.random()*900000).toString());}
     setMfaScreen(method);
   };
@@ -916,16 +918,17 @@ function AuthModal({onClose,onLogin,onForgotPassword}){
               <div style={{color:C.muted,fontSize:12,marginTop:4}}>Choose your verification method</div>
             </div>
             {[
-              {key:"totp",icon:<span style={{display:"flex",alignItems:"center",gap:3}}><svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg><svg width="18" height="18" viewBox="0 0 24 24"><rect x="1" y="1" width="10.5" height="10.5" fill="#F25022"/><rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00"/><rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF"/><rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900"/></svg></span>,title:"Authenticator App",desc:"Google or Microsoft Authenticator. Scan QR. Most secure, works offline.",badge:"Recommended"},
+              {key:"google",icon:<svg width="22" height="22" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>,title:"Google Authenticator",desc:"Scan QR with the Google Authenticator app. Most secure, works offline.",badge:"Recommended"},
+              {key:"microsoft",icon:<svg width="22" height="22" viewBox="0 0 24 24"><rect x="1" y="1" width="10.5" height="10.5" fill="#F25022"/><rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00"/><rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF"/><rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900"/></svg>,title:"Microsoft Authenticator",desc:"Scan QR with the Microsoft Authenticator app. Most secure, works offline."},
               {key:"skip",icon:<span style={{fontSize:18}}>⏩</span>,title:"Skip for Now",desc:"Set up MFA later in Settings"},
             ].map(({key,icon,title,desc,badge})=>(
               <button key={key} onClick={()=>handleMFAChoice(key)}
                 style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
-                  border:`1px solid ${key==="totp"?C.cyan:C.border}`,
-                  borderRadius:12,background:key==="totp"?"#0a1e33":C.card,
+                  border:`1px solid ${(key==="google"||key==="microsoft")?C.cyan:C.border}`,
+                  borderRadius:12,background:(key==="google"||key==="microsoft")?"#0a1e33":C.card,
                   cursor:"pointer",textAlign:"left",width:"100%"}}
                 onMouseOver={e=>e.currentTarget.style.borderColor=C.cyan}
-                onMouseOut={e=>e.currentTarget.style.borderColor=key==="totp"?C.cyan:C.border}
+                onMouseOut={e=>e.currentTarget.style.borderColor=(key==="google"||key==="microsoft")?C.cyan:C.border}
               >
                 <div style={{width:26,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{icon}</div>
                 <div style={{flex:1}}>
@@ -945,9 +948,9 @@ function AuthModal({onClose,onLogin,onForgotPassword}){
         {mfaScreen==="totp"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <MFABackBtn onClick={()=>{setMfaScreen("choice");setError("");setDevCode("");setMfaCode(["","","","","",""]);}} />
-            <div style={{color:C.white,fontWeight:700,fontSize:14,textAlign:"center"}}>Authenticator App</div>
+            <div style={{color:C.white,fontWeight:700,fontSize:14,textAlign:"center"}}>{mfaApp==="google"?"Google Authenticator":mfaApp==="microsoft"?"Microsoft Authenticator":"Authenticator App"}</div>
             <div style={{background:C.card,borderRadius:8,padding:10,fontSize:11,color:C.muted,lineHeight:1.6}}>
-              Open Google or Microsoft Authenticator → tap <strong style={{color:C.cyan}}>+</strong> → <strong style={{color:C.cyan}}>Other account</strong> → scan QR below
+              Open {mfaApp==="google"?"Google Authenticator":mfaApp==="microsoft"?"Microsoft Authenticator":"your authenticator app"} → tap <strong style={{color:C.cyan}}>+</strong> → <strong style={{color:C.cyan}}>{mfaApp==="microsoft"?"Other account":"Scan a QR code"}</strong> → scan QR below
             </div>
             <div style={{textAlign:"center"}}>
               <div style={{background:"#fff",borderRadius:10,padding:8,display:"inline-block",boxShadow:"0 0 0 3px #00d4ff40"}}>
@@ -2531,20 +2534,27 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {(()=>{
                 const invoices=[];
-                const start=user.upgraded_at?new Date(user.upgraded_at):new Date();
-                for(let i=0;i<3;i++){
+                const now=new Date();
+                const start=user.upgraded_at?new Date(user.upgraded_at):now;
+                // Count whole months elapsed since upgrade (0 = upgraded this month => 1 invoice)
+                let monthsElapsed=(now.getFullYear()-start.getFullYear())*12+(now.getMonth()-start.getMonth());
+                if(monthsElapsed<0)monthsElapsed=0;
+                const invoiceCount=Math.min(monthsElapsed+1,12); // at least 1, at most 12
+                for(let i=0;i<invoiceCount;i++){
                   const d=new Date(start);
-                  d.setMonth(d.getMonth()-i);
-                  if(d<=new Date()){
-                    invoices.push({
-                      num:`INV-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}-${String(Math.floor(Math.random()*9000)+1000)}`,
-                      date:d.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"}),
-                      amount:"$49.00 AUD",
-                      status:"Paid",
-                      plan:"Scan365.ai Pro Plan",
-                    });
-                  }
+                  d.setMonth(start.getMonth()+i);
+                  if(d>now)break;
+                  // Stable invoice number derived from the billing month (no random, so it doesn't change on re-render)
+                  const seq=(start.getFullYear()*12+start.getMonth()+i)%9000+1000;
+                  invoices.push({
+                    num:`INV-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}-${seq}`,
+                    date:d.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"}),
+                    amount:"$49.00 AUD",
+                    status:"Paid",
+                    plan:"Scan365.ai Pro Plan",
+                  });
                 }
+                invoices.reverse(); // newest first
                 return invoices.map((inv,i)=>(
                   <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
                     <div style={{display:"flex",alignItems:"center",gap:12}}>
