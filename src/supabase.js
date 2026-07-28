@@ -211,7 +211,7 @@ export async function saveScan(userId, scanData, isPro) {
 export async function getScanHistory(userId, limit = 10) {
   const { data, error } = await supabase
     .from('scans')
-    .select('id, domain, m365_domain, overall_score, risk_level, website_score, m365_score, essential8_score, phishing_score, critical_count, high_count, medium_count, low_count, scanned_at')
+    .select('id, domain, m365_domain, overall_score, risk_level, website_score, m365_score, essential8_score, phishing_score, critical_count, high_count, medium_count, low_count, scan_data, scanned_at')
     .eq('user_id', userId)
     .order('scanned_at', { ascending: false })
     .limit(limit);

@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.35";
+const APP_VERSION="260725.36";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -2611,9 +2611,10 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
                     <div style={{color:C.muted,fontSize:12,marginTop:2}}>{new Date(h.scanned_at).toLocaleDateString("en-AU","en-AU")}</div>
                   </div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                   <span style={{color:scoreColor(h.overall_score),fontWeight:700,fontSize:12,background:"#0a1e33",borderRadius:8,padding:"4px 10px"}}>{h.risk_level||scoreLabel(h.overall_score)}</span>
-                  <span style={{color:C.muted,fontSize:11}}>{h.modules_count||2} modules</span>
+                  <button onClick={()=>setViewScan(h)} style={{background:"transparent",border:`1px solid ${C.cyan}`,borderRadius:8,padding:"6px 12px",color:C.cyan,cursor:"pointer",fontSize:12,fontWeight:600}}>📊 View Report</button>
+                  <button onClick={()=>{const sd=h.scan_data||(h.results_json?JSON.parse(h.results_json):null);if(sd){try{generatePDF(sd,isPro,user.name);}catch(e){console.error("PDF failed",e);}}else{alert("Full report data isn't available for this older scan. Run a new scan for a downloadable PDF.");}}} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 12px",color:C.muted,cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ PDF</button>
                 </div>
               </div>
             ))}
@@ -2825,7 +2826,7 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
                 <div style={{color:C.muted,fontSize:12,marginTop:2}}>{viewScan.domain} · {viewScan.scanned_at?new Date(viewScan.scanned_at).toLocaleDateString("en-AU"):""}</div>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>{if(viewScan.results_json){try{generatePDF(JSON.parse(viewScan.results_json),isPro,user.name);}catch(e){}}}} style={{...Sb.ctaBtn,width:"auto",padding:"8px 16px",fontSize:12}}>⬇ Download PDF</button>
+                <button onClick={()=>{const sd=viewScan.scan_data||(viewScan.results_json?JSON.parse(viewScan.results_json):null);if(sd){try{generatePDF(sd,isPro,user.name);}catch(e){console.error(e);}}else{alert("Full report data isn't available for this older scan.");}}} style={{...Sb.ctaBtn,width:"auto",padding:"8px 16px",fontSize:12}}>⬇ Download PDF</button>
                 <button onClick={()=>setViewScan(null)} style={{...Sb.navBtn}}>✕ Close</button>
               </div>
             </div>
@@ -2852,22 +2853,46 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
                 </div>
               </div>
             </div>
-            {/* Findings from stored results or generic message */}
-            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
-              <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:12}}>Scan Details</div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {[["Domain",viewScan.domain],["M365 Tenant",viewScan.m365domain||"Not specified"],["Scanned",viewScan.scanned_at?new Date(viewScan.scanned_at).toLocaleString("en-AU"):""],["Risk Level",scoreLabel(viewScan.overall_score||0)],["Modules",`${viewScan.modules_count||2} modules scanned`]].map(([k,v])=>(
-                  <div key={k} style={{display:"flex",gap:12,fontSize:13}}>
-                    <span style={{color:C.muted,minWidth:100}}>{k}:</span>
-                    <span style={{color:C.white,fontWeight:600}}>{v}</span>
+            {/* Findings from stored scan_data */}
+            {(()=>{
+              const sd=viewScan.scan_data||(viewScan.results_json?(()=>{try{return JSON.parse(viewScan.results_json);}catch(e){return null;}})():null);
+              const findings=sd?.findings||[];
+              return(
+                <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                    <div style={{color:C.white,fontWeight:700,fontSize:14}}>Security Findings {findings.length>0?`(${findings.length})`:""}</div>
+                    <div style={{display:"flex",gap:6}}>
+                      {["critical","high","medium","low"].map(s=>{
+                        const n=findings.filter(f=>(f.sev||f.severity)===s).length;
+                        return n>0?<span key={s} style={{background:severityColor(s),color:"#080f1a",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:800,textTransform:"capitalize"}}>{n} {s}</span>:null;
+                      })}
+                    </div>
                   </div>
-                ))}
-              </div>
-              <div style={{marginTop:16,padding:12,background:"#0a1e33",borderRadius:8,display:"flex",gap:10,alignItems:"flex-start"}}>
-                <span style={{fontSize:16}}>💡</span>
-                <div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>To see full vulnerability findings, download the PDF report or run a new scan. Contact IT Service Link at <a href="mailto:admin@itsl.com.au" style={{color:C.cyan}}>admin@itsl.com.au</a> for expert remediation support.</div>
-              </div>
-            </div>
+                  {findings.length>0?(
+                    <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:340,overflowY:"auto"}}>
+                      {findings.map((f,i)=>{
+                        const sev=f.sev||f.severity;
+                        return(
+                          <div key={i} style={{background:"#0a1e33",borderRadius:8,padding:12,borderLeft:`3px solid ${severityColor(sev)}`}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                              <span style={{color:C.white,fontWeight:700,fontSize:13}}>{f.title}</span>
+                              <span style={{color:severityColor(sev),fontSize:9,fontWeight:800,textTransform:"uppercase",background:C.card,borderRadius:4,padding:"2px 6px"}}>{sev}</span>
+                            </div>
+                            {f.detail&&<div style={{color:C.muted,fontSize:12,lineHeight:1.5}}>{f.detail}</div>}
+                            {f.fix&&<div style={{color:C.cyan,fontSize:11,marginTop:6,lineHeight:1.5}}><strong>Fix:</strong> {f.fix}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ):(
+                    <div style={{padding:12,background:"#0a1e33",borderRadius:8,display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <span style={{fontSize:16}}>💡</span>
+                      <div style={{color:C.muted,fontSize:12,lineHeight:1.6}}>Detailed findings aren't stored for this older scan. Run a new scan to see the full breakdown, or contact IT Service Link at <a href="mailto:admin@itsl.com.au" style={{color:C.cyan}}>admin@itsl.com.au</a> for remediation support.</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -4269,6 +4294,16 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
         // Top findings sorted by severity
         const sevRank={critical:0,high:1,medium:2,low:3,pass:4,info:5};
         const topFindings=[...allFindings].sort((a,b)=>(sevRank[a.severity||a.sev]??9)-(sevRank[b.severity||b.sev]??9)).slice(0,5);
+        // Richer analytics: category grouping, remediation load, posture
+        const catCounts={
+          "Web Security":allFindings.filter(f=>/header|ssl|tls|https|cookie|hsts|csp|website|domain/i.test((f.title||"")+(f.detail||""))).length,
+          "Email & Phishing":allFindings.filter(f=>/dmarc|spf|dkim|phish|email|spoof|mail|impersonation/i.test((f.title||"")+(f.detail||""))).length,
+          "Access & MFA":allFindings.filter(f=>/mfa|password|access|auth|login|credential/i.test((f.title||"")+(f.detail||""))).length,
+        };
+        catCounts["Other"]=Math.max(0,totalIssues-catCounts["Web Security"]-catCounts["Email & Phishing"]-catCounts["Access & MFA"]);
+        const remediationLoad=sevCounts.critical*3+sevCounts.high*2+sevCounts.medium+Math.ceil(sevCounts.low/2); // est. remediation effort units
+        const fixablePct=totalIssues>0?Math.round((allFindings.filter(f=>f.fix).length/totalIssues)*100):0;
+        const postureScore=overallScore;
         const navItems=[
           {icon:"▦",label:"Dashboard"},
           {icon:"◈",label:"Assets"},
@@ -4340,7 +4375,24 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
                   </div>
                 </div>
 
-                {/* Overall Risk gauge */}
+                {/* KPI strip */}
+                <div style={{gridColumn:"1/-1",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
+                  {[
+                    {label:"Overall Score",val:`${overallScore}`,sub:"/100",color:scoreColor(overallScore)},
+                    {label:"Total Findings",val:totalIssues,sub:"issues",color:C.cyan},
+                    {label:"Critical + High",val:sevCounts.critical+sevCounts.high,sub:"urgent",color:sevCounts.critical+sevCounts.high>0?C.crimson:C.green},
+                    {label:"Remediation Load",val:remediationLoad,sub:"effort units",color:C.amber},
+                    {label:"With Fix Steps",val:`${fixablePct}%`,sub:"actionable",color:C.green},
+                  ].map(({label,val,sub,color})=>(
+                    <div key={label} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px"}}>
+                      <div style={{display:"flex",alignItems:"baseline",gap:4}}>
+                        <span style={{fontSize:26,fontWeight:900,color,lineHeight:1}}>{val}</span>
+                        <span style={{color:C.muted,fontSize:11,fontWeight:600}}>{sub}</span>
+                      </div>
+                      <div style={{color:C.muted,fontSize:11,fontWeight:600,marginTop:4,textTransform:"uppercase",letterSpacing:0.3}}>{label}</div>
+                    </div>
+                  ))}
+                </div>
                 <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,display:"flex",flexDirection:"column",alignItems:"center"}}>
                   <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,alignSelf:"flex-start",marginBottom:16}}>Overall Risk Score</div>
                   <DonutGauge score={overallScore} size={150} label={riskLevel}/>
@@ -4404,6 +4456,36 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                {/* Findings by category bar chart */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24}}>
+                  <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:16}}>Findings by Category</div>
+                  {totalIssues>0?(
+                    <BarChartLabeled data={Object.entries(catCounts).filter(([,v])=>v>0).map(([k,v],i)=>({label:k.split(" ")[0],value:v,color:[C.cyan,C.amber,"#a78bfa",C.green][i%4]}))} height={140}/>
+                  ):(
+                    <div style={{color:C.muted,fontSize:13,textAlign:"center",padding:"40px 0"}}>No findings to categorise.</div>
+                  )}
+                </div>
+
+                {/* Remediation priority gauge */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                  <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,alignSelf:"flex-start",marginBottom:16}}>Security Posture</div>
+                  <DonutGauge score={postureScore} size={130} label={riskLevel}/>
+                  <div style={{display:"flex",gap:20,marginTop:16,width:"100%",justifyContent:"center"}}>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{color:C.crimson,fontSize:20,fontWeight:900}}>{sevCounts.critical+sevCounts.high}</div>
+                      <div style={{color:C.muted,fontSize:10,fontWeight:600}}>FIX NOW</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{color:C.amber,fontSize:20,fontWeight:900}}>{sevCounts.medium}</div>
+                      <div style={{color:C.muted,fontSize:10,fontWeight:600}}>THIS MONTH</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{color:C.green,fontSize:20,fontWeight:900}}>{sevCounts.low}</div>
+                      <div style={{color:C.muted,fontSize:10,fontWeight:600}}>MONITOR</div>
+                    </div>
                   </div>
                 </div>
 
