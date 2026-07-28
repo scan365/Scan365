@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.36";
+const APP_VERSION="260725.37";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -166,6 +166,24 @@ function generateScanResults(domain,m365domain,companySize){
 
 const SEV_COLOR={critical:"#ef4444",high:"#f59e0b",medium:"#a78bfa",low:"#10b981"};
 const SEV_BG={critical:"#2a0f0f",high:"#2a1f0a",medium:"#1a1530",low:"#0a2018"};
+function severityColor(sev){
+  if(sev==="critical")return "#ef4444";
+  if(sev==="high")return "#f59e0b";
+  if(sev==="medium")return "#a78bfa";
+  if(sev==="low")return "#10b981";
+  if(sev==="pass")return "#10b981";
+  if(sev==="info")return "#00d4ff";
+  return "#5a7a96";
+}
+function severityIcon(sev){
+  if(sev==="critical")return "🔴";
+  if(sev==="high")return "🟠";
+  if(sev==="medium")return "🟡";
+  if(sev==="low")return "🔵";
+  if(sev==="pass")return "✅";
+  if(sev==="info")return "ℹ️";
+  return "⚪";
+}
 function scoreColor(s){return s>=70?"#10b981":s>=45?"#f59e0b":"#ef4444";}
 function scoreLabel(s){return s>=70?"Low Risk":s>=45?"Medium Risk":"High Risk";}
 
@@ -4136,25 +4154,7 @@ function Results({results,isPro,activeModule,setActiveModule,setScreen,user}){
 
   const handlePDF=()=>{generatePDF(results,isPro,user?.name);setPdfDone(true);setTimeout(()=>setPdfDone(false),3000);};
 
-  const severityColor=(sev)=>{
-    if(sev==="critical")return C.crimson;
-    if(sev==="high")return C.amber;
-    if(sev==="medium")return "#f59e0b";
-    if(sev==="low")return C.muted;
-    if(sev==="pass")return C.green;
-    if(sev==="info")return C.cyan;
-    return C.muted;
-  };
-
-  const severityIcon=(sev)=>{
-    if(sev==="critical")return "🔴";
-    if(sev==="high")return "🟠";
-    if(sev==="medium")return "🟡";
-    if(sev==="low")return "🔵";
-    if(sev==="pass")return "✅";
-    if(sev==="info")return "ℹ️";
-    return "⚪";
-  };
+  // severityColor and severityIcon are now module-level helpers (defined near SEV_COLOR)
 
   return(
     <div style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>

@@ -189,7 +189,10 @@ export async function saveScan(userId, scanData, isPro) {
     });
   });
   if (findings.length > 0) {
-    await supabase.from('scan_findings').insert(findings);
+    try{
+      const fr=await supabase.from('scan_findings').insert(findings);
+      if(fr.error)console.warn('scan_findings insert skipped:',fr.error.message);
+    }catch(e){console.warn('scan_findings insert failed (non-fatal):',e);}
   }
 
   // Increment user scan count. Try the RPC first; if it's missing/fails, update the row directly.
