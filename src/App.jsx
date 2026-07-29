@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.39";
+const APP_VERSION="260725.40";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -1871,7 +1871,7 @@ function AdminDashboard({onClose}){
                               <div class="row"><span>Scan365.ai ${u.plan.charAt(0).toUpperCase()+u.plan.slice(1)} Plan</span><span>${u.plan==="enterprise"?"Custom":amount==="$0"?"$0.00":amount.replace("$","$")}</span></div>
                               <div class="row"><span>GST (10%)</span><span>${u.plan==="pro"?"$4.45":"$0.00"}</span></div>
                               <div class="divider"></div>
-                              <div class="row" style="font-size:18px;font-weight:bold"><span>Total (incl. GST)</span><span>${u.plan==="pro"?"$49.00 AUD":"Custom"}</span></div>
+                              <div class="row" style="font-size:18px;font-weight:bold"><span>Total (incl. GST)</span><span>${u.plan==="pro"?(u.billing_period==="annual"?"$490.00 AUD":"$49.00 AUD"):"Custom"}</span></div>
                               <div class="paid">✓ PAID</div>
                               <div class="divider"></div>
                               <p style="color:#666;font-size:12px;">Payment by Paddle · admin@itsl.com.au · www.scan365.ai</p>
@@ -2759,23 +2759,32 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
                 const invoices=[];
                 const now=new Date();
                 const start=user.upgraded_at?new Date(user.upgraded_at):now;
-                // Count whole months elapsed since upgrade (0 = upgraded this month => 1 invoice)
-                let monthsElapsed=(now.getFullYear()-start.getFullYear())*12+(now.getMonth()-start.getMonth());
-                if(monthsElapsed<0)monthsElapsed=0;
-                const invoiceCount=Math.min(monthsElapsed+1,12); // at least 1, at most 12
-                for(let i=0;i<invoiceCount;i++){
-                  const d=new Date(start);
-                  d.setMonth(start.getMonth()+i);
-                  if(d>now)break;
-                  // Stable invoice number derived from the billing month (no random, so it doesn't change on re-render)
-                  const seq=(start.getFullYear()*12+start.getMonth()+i)%9000+1000;
-                  invoices.push({
-                    num:`INV-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}-${seq}`,
-                    date:d.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"}),
-                    amount:"$49.00 AUD",
-                    status:"Paid",
-                    plan:"Scan365.ai Pro Plan",
-                  });
+                const isAnnual=user.billing_period==="annual";
+                const amount=isAnnual?"$490.00 AUD":"$49.00 AUD";
+                const planLabel=isAnnual?"Scan365.ai Pro Plan (Annual)":"Scan365.ai Pro Plan (Monthly)";
+                if(isAnnual){
+                  // One invoice per YEAR since upgrade (at least 1)
+                  let yearsElapsed=now.getFullYear()-start.getFullYear();
+                  if(now.getMonth()<start.getMonth()||(now.getMonth()===start.getMonth()&&now.getDate()<start.getDate()))yearsElapsed--;
+                  if(yearsElapsed<0)yearsElapsed=0;
+                  const count=yearsElapsed+1;
+                  for(let i=0;i<count;i++){
+                    const d=new Date(start);d.setFullYear(start.getFullYear()+i);
+                    if(d>now)break;
+                    const seq=(start.getFullYear()+i)%9000+1000;
+                    invoices.push({num:`INV-${d.getFullYear()}-${seq}`,date:d.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"}),amount,status:"Paid",plan:planLabel});
+                  }
+                }else{
+                  // One invoice per MONTH since upgrade (at least 1, max 12 shown)
+                  let monthsElapsed=(now.getFullYear()-start.getFullYear())*12+(now.getMonth()-start.getMonth());
+                  if(monthsElapsed<0)monthsElapsed=0;
+                  const invoiceCount=Math.min(monthsElapsed+1,12);
+                  for(let i=0;i<invoiceCount;i++){
+                    const d=new Date(start);d.setMonth(start.getMonth()+i);
+                    if(d>now)break;
+                    const seq=(start.getFullYear()*12+start.getMonth()+i)%9000+1000;
+                    invoices.push({num:`INV-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}-${seq}`,date:d.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"}),amount,status:"Paid",plan:planLabel});
+                  }
                 }
                 invoices.reverse(); // newest first
                 return invoices.map((inv,i)=>(
