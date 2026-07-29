@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.40";
+const APP_VERSION="260725.41";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -1838,7 +1838,11 @@ function AdminDashboard({onClose}){
                   </thead>
                   <tbody>
                     {proUsers.map((u,i)=>{
-                      const amount=u.plan==="enterprise"?"Custom":u.plan==="pro"?"$49.00":"$0";
+                      const isAnnual=u.billing_period==="annual";
+                      const amount=u.plan==="enterprise"?"Custom":u.plan==="pro"?(isAnnual?"$490.00":"$49.00"):"$0";
+                      const billingLabel=u.plan==="enterprise"?"Custom":isAnnual?"Annual":"Monthly";
+                      const gst=u.plan==="pro"?(isAnnual?"$44.55":"$4.45"):"$0.00";
+                      const total=u.plan==="enterprise"?"Custom":isAnnual?"$490.00 AUD":"$49.00 AUD";
                       const invoiceNum=`INV-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,"0")}-${String(1000+i).padStart(4,"0")}`;
                       return(
                         <tr key={u.id} style={{borderTop:`1px solid ${C.border}`,background:i%2===0?"transparent":C.card}}>
@@ -1848,12 +1852,12 @@ function AdminDashboard({onClose}){
                             <span style={{background:u.plan==="enterprise"?"#0a1e33":"#0a2018",color:u.plan==="enterprise"?C.cyan:C.green,border:`1px solid ${u.plan==="enterprise"?C.cyan:C.green}`,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,textTransform:"uppercase"}}>{u.plan}</span>
                           </td>
                           <td style={{padding:"10px 12px",color:C.green,fontWeight:700,fontSize:13}}>{amount} AUD</td>
-                          <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>Monthly</td>
+                          <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{billingLabel}</td>
                           <td style={{padding:"10px 12px"}}>
                             <span style={{color:C.green,fontSize:12,fontWeight:700}}>✓ Active</span>
                           </td>
                           <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{invoiceNum}</td>
-                          <td style={{padding:"10px 12px"}}>
+                          <td style={{padding:"10px 12px",display:"flex",gap:6,flexWrap:"wrap"}}>
                             <button onClick={()=>{
                               const w=window.open("","_blank");
                               w.document.write(`<html><head><title>${invoiceNum}</title>
@@ -1868,18 +1872,36 @@ function AdminDashboard({onClose}){
                               <div class="row"><span><b>Date:</b></span><span>${new Date().toLocaleDateString("en-AU")}</span></div>
                               <div class="row"><span><b>Billed to:</b></span><span>${u.name}<br/>${u.company||""}<br/>${u.email}</span></div>
                               <div class="divider"></div>
-                              <div class="row"><span>Scan365.ai ${u.plan.charAt(0).toUpperCase()+u.plan.slice(1)} Plan</span><span>${u.plan==="enterprise"?"Custom":amount==="$0"?"$0.00":amount.replace("$","$")}</span></div>
-                              <div class="row"><span>GST (10%)</span><span>${u.plan==="pro"?"$4.45":"$0.00"}</span></div>
+                              <div class="row"><span>Scan365.ai ${u.plan.charAt(0).toUpperCase()+u.plan.slice(1)} Plan (${billingLabel})</span><span>${u.plan==="enterprise"?"Custom":total.replace(" AUD","")}</span></div>
+                              <div class="row"><span>GST (10% incl.)</span><span>${gst}</span></div>
                               <div class="divider"></div>
-                              <div class="row" style="font-size:18px;font-weight:bold"><span>Total (incl. GST)</span><span>${u.plan==="pro"?(u.billing_period==="annual"?"$490.00 AUD":"$49.00 AUD"):"Custom"}</span></div>
+                              <div class="row" style="font-size:18px;font-weight:bold"><span>Total (incl. GST)</span><span>${total}</span></div>
                               <div class="paid">✓ PAID</div>
                               <div class="divider"></div>
-                              <p style="color:#666;font-size:12px;">Payment by Paddle · admin@itsl.com.au · www.scan365.ai</p>
+                              <p style="color:#666;font-size:12px;">Payment processed securely by Stripe · admin@itsl.com.au · www.scan365.ai</p>
                               </body></html>`);
                               w.document.close();
                               setTimeout(()=>w.print(),500);
                             }} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",color:C.text,cursor:"pointer",fontSize:11,fontWeight:600}}>
                               🧾 Invoice
+                            </button>
+                            <button onClick={async()=>{
+                              if(!window.confirm(`Refund ${u.name} (${total}) and cancel their subscription? This cannot be undone.`))return;
+                              try{
+                                const resp=await fetch("https://scan-api-production-6f04.up.railway.app/api/stripe/refund",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})});
+                                const data=await resp.json();
+                                if(data.ok){
+                                  const subject=encodeURIComponent("Your Scan365.ai refund has been processed");
+                                  const body=encodeURIComponent(`Dear ${u.name},\n\nThank you for contacting us. We're writing to confirm that your refund of ${total} for your Scan365.ai Pro subscription has been processed successfully.\n\nThe funds have been returned to your original payment method. Please allow 3 to 5 business days for the amount to appear in your account, depending on your bank or card provider.\n\nYour Pro subscription has been cancelled and your account has been returned to the Free plan. You're welcome to continue using Scan365.ai's free security scans at any time, and to upgrade again whenever it suits you.\n\nIf you have any questions about this refund or your account, simply reply to this email and our team will be glad to help.\n\nThank you for choosing Scan365.ai. We appreciate the opportunity to support your cybersecurity, and we hope to welcome you back in the future.\n\nWarm regards,\nThe Scan365.ai Team\nIT Service Link | ABN 78 336 526 604\nadmin@itsl.com.au | www.scan365.ai`);
+                                  window.open(`mailto:${u.email}?subject=${subject}&body=${body}`,"_blank");
+                                  alert(`Refund processed for ${u.name}.${data.refunded?" Payment refunded via Stripe.":" (No charge found to refund, but subscription cancelled and downgraded.)"} An email draft has opened for you to send.`);
+                                  window.location.reload();
+                                }else{
+                                  alert("Refund failed: "+(data.error||"unknown error"));
+                                }
+                              }catch(e){alert("Refund request failed: "+e.message);}
+                            }} style={{background:"transparent",border:`1px solid ${C.crimson}`,borderRadius:6,padding:"4px 10px",color:C.crimson,cursor:"pointer",fontSize:11,fontWeight:600}}>
+                              ↩ Refund
                             </button>
                           </td>
                         </tr>
