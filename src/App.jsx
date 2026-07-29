@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.38";
+const APP_VERSION="260725.39";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -2713,8 +2713,9 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
         {/* Payment notification for Pro users */}
         {user.plan==="pro"&&(()=>{
           const startDate=user.upgraded_at?new Date(user.upgraded_at):new Date();
+          const isAnnual=user.billing_period==="annual";
           const nextBilling=new Date(startDate);
-          nextBilling.setMonth(nextBilling.getMonth()+1);
+          if(isAnnual)nextBilling.setFullYear(nextBilling.getFullYear()+1);else nextBilling.setMonth(nextBilling.getMonth()+1);
           const daysUntil=Math.ceil((nextBilling-new Date())/(1000*60*60*24));
           const isUrgent=daysUntil<=7;
           return(
@@ -2723,10 +2724,10 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
                 <span style={{fontSize:20}}>{isUrgent?"⚠️":"✅"}</span>
                 <div>
                   <div style={{color:isUrgent?C.amber:C.green,fontWeight:700,fontSize:13}}>
-                    {isUrgent?`Payment due in ${daysUntil} day${daysUntil!==1?"s":""}!`:"Next payment scheduled"}
+                    {isUrgent?`${isAnnual?"Renews":"Payment due"} in ${daysUntil} day${daysUntil!==1?"s":""}!`:`${isAnnual?"Subscription renews":"Next payment scheduled"}`}
                   </div>
                   <div style={{color:C.muted,fontSize:12,marginTop:2}}>
-                    Your Pro plan renews on <span style={{color:C.white,fontWeight:700}}>{nextBilling.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})}</span> · $49.00 AUD
+                    Your Pro plan {isAnnual?"renews":"renews"} on <span style={{color:C.white,fontWeight:700}}>{nextBilling.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})}</span> · ${isAnnual?"490.00":"49.00"} AUD
                   </div>
                 </div>
               </div>
@@ -3179,6 +3180,12 @@ export default function App(){
 
   const upgradeToPro=async()=>{
     if(!user){setShowAuth(true);return;}
+    // Guard: already Pro → don't let them pay again (prevents duplicate charges/refunds)
+    if(user.plan==="pro"||isPro){
+      showToast("You're already on the Pro plan. Manage your subscription from the dashboard.","error");
+      setScreen("dashboard");
+      return;
+    }
     try{
       const plan=billing==="annual"?"annual":"monthly";
       const resp=await fetch(`${API_URL}/api/stripe/create-checkout-session`,{
@@ -3223,7 +3230,7 @@ export default function App(){
       {screen==="dashboard"&&user?<UserDashboard user={user} setScreen={setScreen} onScan={handleStartScan} isPro={isPro} setShowCompleteProfile={setShowCompleteProfile} setShowProfile={setShowProfile} setShowDeviceSettings={setShowDeviceSettings}/>:(screen==="dashboard"&&!user?<Landing radarAngle={radarAngle} billing={billing} setBilling={setBilling} onStartScan={handleStartScan} onSignUp={()=>setShowAuth(true)} setScreen={setScreen} user={user}/>:null)}
       {screen==="scan"&&<ScanForm form={form} setForm={setForm} scanning={scanning} scanPct={scanPct} scanStatus={scanStatus} runScan={runScan} isPro={isPro} setScreen={setScreen} user={user}/>}
       {screen==="results"&&results&&<Results results={results} isPro={isPro} activeModule={activeModule} setActiveModule={setActiveModule} setScreen={setScreen} user={user}/>}
-      {screen==="upgrade"&&<Upgrade upgradeToPro={upgradeToPro} setScreen={setScreen} billing={billing} setBilling={setBilling}/>}
+      {screen==="upgrade"&&(isPro||user?.plan==="pro"?<AlreadyPro user={user} setScreen={setScreen}/>:<Upgrade upgradeToPro={upgradeToPro} setScreen={setScreen} billing={billing} setBilling={setBilling}/>)}
 
       <Footer/>
       <ChatBot user={user} results={results}/>
@@ -4744,6 +4751,36 @@ function FindingCard({finding:f}){
 }
 
 // ── Upgrade ───────────────────────────────────────────────────────
+function AlreadyPro({user,setScreen}){
+  // Compute renewal date from upgraded_at + billing period
+  const start=user?.upgraded_at?new Date(user.upgraded_at):new Date();
+  const isAnnual=user?.billing_period==="annual";
+  const renew=new Date(start);
+  if(isAnnual)renew.setFullYear(renew.getFullYear()+1);else renew.setMonth(renew.getMonth()+1);
+  return(
+    <div style={{maxWidth:560,margin:"0 auto",padding:"48px 16px",textAlign:"center"}}>
+      <div style={{fontSize:56,marginBottom:16}}>⭐</div>
+      <h2 style={{color:"#ffffff",fontSize:24,fontWeight:800,margin:"0 0 8px"}}>You're already on Pro!</h2>
+      <p style={{color:"#5a7a96",fontSize:15,margin:"0 0 24px",lineHeight:1.6}}>You have unlimited scans and all 4 modules unlocked. There's nothing more to buy, you're all set.</p>
+      <div style={{background:"#0e1d2f",border:"1px solid #10b981",borderRadius:16,padding:24,textAlign:"left",marginBottom:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e3a52"}}>
+          <span style={{color:"#5a7a96",fontSize:13}}>Plan</span>
+          <span style={{color:"#10b981",fontSize:14,fontWeight:800}}>Pro {isAnnual?"(Annual)":"(Monthly)"}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e3a52"}}>
+          <span style={{color:"#5a7a96",fontSize:13}}>Status</span>
+          <span style={{color:"#ffffff",fontSize:14,fontWeight:700}}>Active ✓</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0"}}>
+          <span style={{color:"#5a7a96",fontSize:13}}>{isAnnual?"Renews":"Next payment"}</span>
+          <span style={{color:"#ffffff",fontSize:14,fontWeight:700}}>{renew.toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})}</span>
+        </div>
+      </div>
+      <button onClick={()=>setScreen("dashboard")} style={{...Sb.ctaBtn,width:"auto",padding:"12px 32px"}}>← Back to Dashboard</button>
+    </div>
+  );
+}
+
 function Upgrade({upgradeToPro,setScreen,billing,setBilling}){
   const[processing,setProcessing]=useState(false);
   const plan=PLANS[billing]||PLANS.monthly;
