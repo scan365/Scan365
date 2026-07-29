@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.37";
+const APP_VERSION="260725.38";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -326,7 +326,7 @@ const MODULE_META={
   essential8:{label:"ACSC Essential Eight",icon:"🛡️",desc:"ML0-ML3 assessment: Patching, App Control, MFA, Macros, Backups, Admin Privileges"},
   phishing:{label:"Phishing Risk Score",icon:"🎣",desc:"SPF, DKIM, DMARC, BEC, Email Spoofing, Quishing, Security Awareness"},
 };
-const PLANS={monthly:{label:"Monthly",pro:49,saving:null,suffix:"/mo"},quarterly:{label:"Quarterly",pro:129,saving:"Save 12%",suffix:"/quarter"},annual:{label:"Annual",pro:399,saving:"Save 32%",suffix:"/year"}};
+const PLANS={monthly:{label:"Monthly",pro:49,saving:null,suffix:"/mo"},annual:{label:"Annual",pro:490,saving:"2 months free",suffix:"/year"}};
 const FREE_SCAN_LIMIT=2;
 
 function Scan365Logo({size=40}){
@@ -2730,7 +2730,16 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
                   </div>
                 </div>
               </div>
-              <a href="mailto:admin@itsl.com.au?subject=Scan365 Billing Enquiry" style={{...Sb.ctaBtn,textDecoration:"none",width:"auto",padding:"8px 14px",fontSize:12,background:"transparent",border:`1px solid ${isUrgent?C.amber:C.green}`,color:isUrgent?C.amber:C.green}}>Manage Billing</a>
+              <button onClick={async()=>{
+                if(user.stripe_customer_id){
+                  try{
+                    const resp=await fetch("https://scan-api-production-6f04.up.railway.app/api/stripe/create-portal-session",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customerId:user.stripe_customer_id})});
+                    const data=await resp.json();
+                    if(data.url){window.location.href=data.url;return;}
+                  }catch(e){}
+                }
+                window.location.href="mailto:admin@itsl.com.au?subject=Scan365 Billing Enquiry";
+              }} style={{...Sb.ctaBtn,width:"auto",padding:"8px 14px",fontSize:12,background:"transparent",border:`1px solid ${isUrgent?C.amber:C.green}`,color:isUrgent?C.amber:C.green,cursor:"pointer"}}>Manage Billing</button>
             </div>
           );
         })()}
@@ -2954,6 +2963,45 @@ export default function App(){
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
   useEffect(()=>{const iv=setInterval(()=>setRadarAngle(a=>(a+2)%360),30);return()=>clearInterval(iv);},[]);
 
+  // Handle return from Stripe Checkout
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const checkout=params.get("checkout");
+    if(!checkout)return;
+    // Clean the URL so refreshes don't re-trigger
+    window.history.replaceState({},"",window.location.pathname);
+    if(checkout==="success"){
+      showToast("Payment successful! Activating your Pro plan… 🎉");
+      // The webhook upgrades the DB; poll the user record a few times to pick it up
+      let tries=0;
+      const poll=setInterval(async()=>{
+        tries++;
+        try{
+          const email=sessionStorage.getItem("scan365_checkout_email");
+          if(email){
+            const fresh=await getUser(email);
+            if(fresh){
+              // Log them back in (session was lost on redirect)
+              setUser(fresh);
+              if(fresh.plan==="pro"){
+                setIsPro(true);
+                showToast("Pro unlocked! All modules now available. 🎉");
+                sessionStorage.removeItem("scan365_checkout_email");
+                clearInterval(poll);
+                setScreen("dashboard");
+                return;
+              }
+            }
+          }
+        }catch(e){/* keep polling */}
+        if(tries>=8){clearInterval(poll);sessionStorage.removeItem("scan365_checkout_email");} // stop after ~16s
+      },2000);
+    }else if(checkout==="cancelled"){
+      showToast("Checkout cancelled. You can upgrade any time.","error");
+    }
+  // eslint-disable-next-line
+  },[]);
+
   const handleLogin=(u)=>{
     setUser(u);
     setIsPro(u.plan==="pro"||u.plan==="enterprise");
@@ -3130,11 +3178,25 @@ export default function App(){
   };
 
   const upgradeToPro=async()=>{
-    const plan=billing;
-    const amounts={monthly:49,quarterly:129,annual:399};
-    await upgradePlan(user.id,plan==="monthly"?"pro":plan==="quarterly"?"pro":"pro",plan,amounts[plan]);
-    setIsPro(true);setUser(prev=>({...prev,plan:"pro"}));
-    setScreen(results?"results":"dashboard");showToast("Pro unlocked! All modules now available. 🎉");
+    if(!user){setShowAuth(true);return;}
+    try{
+      const plan=billing==="annual"?"annual":"monthly";
+      const resp=await fetch(`${API_URL}/api/stripe/create-checkout-session`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({userId:user.id,email:user.email,plan}),
+      });
+      const data=await resp.json();
+      if(data.url){
+        try{sessionStorage.setItem("scan365_checkout_email",user.email);}catch(e){}
+        window.location.href=data.url; // redirect to Stripe Checkout
+      }else{
+        showToast(data.error||"Could not start checkout. Please try again.","error");
+      }
+    }catch(e){
+      console.error("Checkout error:",e);
+      showToast("Payment service unavailable. Please try again shortly.","error");
+    }
   };
 
   return(
@@ -4683,40 +4745,43 @@ function FindingCard({finding:f}){
 
 // ── Upgrade ───────────────────────────────────────────────────────
 function Upgrade({upgradeToPro,setScreen,billing,setBilling}){
-  const[payMethod,setPayMethod]=useState("card");
-  const[fields,setFields]=useState({name:"",card:"",expiry:"",cvv:""});
   const[processing,setProcessing]=useState(false);
-  const plan=PLANS[billing];
-  const handlePay=()=>{if(payMethod==="card"&&(!fields.name||!fields.card||!fields.expiry||!fields.cvv))return;setProcessing(true);setTimeout(()=>{setProcessing(false);upgradeToPro();},2000);};
+  const plan=PLANS[billing]||PLANS.monthly;
+  const handleCheckout=async()=>{setProcessing(true);await upgradeToPro();/* redirects away; if it returns, re-enable */setTimeout(()=>setProcessing(false),4000);};
   return(
     <div style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 60px"}}>
       <div style={{display:"flex",gap:24,flexWrap:"wrap",justifyContent:"center",maxWidth:840,margin:"32px auto"}}>
         <div style={{flex:"1 1 300px",display:"flex",flexDirection:"column",gap:16}}>
           <h2 style={{color:"#ffffff",fontSize:20,fontWeight:800,margin:0}}>Choose Your Plan</h2>
           <div style={{background:"#132236",borderRadius:12,padding:4,display:"flex",gap:4}}>
-            {Object.entries(PLANS).map(([key,p])=>(<button key={key} onClick={()=>setBilling(key)} style={{flex:1,padding:"8px 6px",border:"none",borderRadius:9,background:billing===key?"#00d4ff":"transparent",color:billing===key?"#080f1a":"#5a7a96",cursor:"pointer",fontSize:12,fontWeight:700}}>{p.label}{p.saving&&<span style={{display:"block",fontSize:10,color:billing===key?"#080f1a":"#10b981"}}>{p.saving}</span>}</button>))}
+            {Object.entries(PLANS).map(([key,p])=>(<button key={key} onClick={()=>setBilling(key)} style={{flex:1,padding:"10px 6px",border:"none",borderRadius:9,background:billing===key?"#00d4ff":"transparent",color:billing===key?"#080f1a":"#5a7a96",cursor:"pointer",fontSize:13,fontWeight:700}}>{p.label}{p.saving&&<span style={{display:"block",fontSize:10,color:billing===key?"#080f1a":"#10b981"}}>{p.saving}</span>}</button>))}
           </div>
           <div style={{background:"#0e1d2f",border:"1.5px solid #00d4ff",borderRadius:16,padding:24}}>
             <div style={{color:"#5a7a96",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Pro Plan</div>
             <div style={{color:"#ffffff",fontSize:36,fontWeight:900,marginBottom:4}}>${plan.pro}<span style={{color:"#5a7a96",fontSize:14,fontWeight:400}}>{plan.suffix}</span></div>
-            {plan.saving&&<div style={{color:"#10b981",fontSize:13,fontWeight:600,marginBottom:12}}>{plan.saving} vs monthly</div>}
+            {plan.saving&&<div style={{color:"#10b981",fontSize:13,fontWeight:600,marginBottom:12}}>{plan.saving}</div>}
             <ul style={{listStyle:"none",padding:0,margin:0,display:"flex",flexDirection:"column",gap:8}}>
               {["All 4 scan modules","Unlimited scans","ACSC Essential Eight","M365 config audit","White-label PDF reports","Priority email alerts"].map(f=>(<li key={f} style={{color:"#94a3b8",fontSize:13,display:"flex",gap:8}}><span style={{color:"#00d4ff"}}>✓</span>{f}</li>))}
             </ul>
           </div>
-          <div style={{background:"#132236",border:"1px solid #1e3a52",borderRadius:12,padding:16,display:"flex",gap:10,alignItems:"center"}}><span style={{fontSize:24}}>🔒</span><div><div style={{color:"#ffffff",fontSize:13,fontWeight:700}}>14-Day Money-Back Guarantee</div><div style={{color:"#5a7a96",fontSize:12}}>Cancel anytime.</div></div></div>
+          <div style={{background:"#132236",border:"1px solid #1e3a52",borderRadius:12,padding:16,display:"flex",gap:10,alignItems:"center"}}><span style={{fontSize:24}}>🔒</span><div><div style={{color:"#ffffff",fontSize:13,fontWeight:700}}>Cancel anytime</div><div style={{color:"#5a7a96",fontSize:12}}>Manage or cancel from your dashboard.</div></div></div>
         </div>
-        <div style={{flex:"1 1 300px",background:"#0e1d2f",border:"1px solid #1e3a52",borderRadius:20,padding:28,display:"flex",flexDirection:"column",gap:16}}>
-          <h2 style={{color:"#ffffff",fontSize:18,fontWeight:800,margin:0}}>Payment Details</h2>
-          <div style={{display:"flex",gap:8}}>
-            {[{key:"card",label:"💳 Card"},{key:"paypal",label:"🅿 PayPal"},{key:"afterpay",label:"🟢 AfterPay"}].map(({key,label})=>(<button key={key} onClick={()=>setPayMethod(key)} style={{flex:1,padding:"9px 6px",border:`1.5px solid ${payMethod===key?"#00d4ff":"#1e3a52"}`,borderRadius:9,background:payMethod===key?"#0a1e33":"#132236",color:payMethod===key?"#00d4ff":"#5a7a96",cursor:"pointer",fontSize:12,fontWeight:700}}>{label}</button>))}
+        <div style={{flex:"1 1 300px",background:"#0e1d2f",border:"1px solid #1e3a52",borderRadius:20,padding:28,display:"flex",flexDirection:"column",gap:18}}>
+          <h2 style={{color:"#ffffff",fontSize:18,fontWeight:800,margin:0}}>Secure Checkout</h2>
+          <div style={{background:"#132236",borderRadius:12,padding:20,textAlign:"center"}}>
+            <div style={{color:"#5a7a96",fontSize:13,marginBottom:8}}>You'll be redirected to our secure payment page to complete your purchase.</div>
+            <div style={{display:"flex",gap:10,justifyContent:"center",alignItems:"center",flexWrap:"wrap",marginTop:12}}>
+              <span style={{fontSize:22}}>💳</span><span style={{color:"#5a7a96",fontSize:12,fontWeight:600}}>Card</span>
+              <span style={{fontSize:22}}>🅿️</span><span style={{color:"#5a7a96",fontSize:12,fontWeight:600}}>PayPal</span>
+              <span style={{fontSize:22}}>🟢</span><span style={{color:"#5a7a96",fontSize:12,fontWeight:600}}>Afterpay</span>
+            </div>
           </div>
-          {payMethod==="card"&&(<><div><label style={Sb.label}>Cardholder name</label><input placeholder="Full name" value={fields.name} onChange={e=>setFields(f=>({...f,name:e.target.value}))} style={Sb.input}/></div><div><label style={Sb.label}>Card number</label><input placeholder="1234 5678 9012 3456" value={fields.card} onChange={e=>setFields(f=>({...f,card:e.target.value}))} style={Sb.input} maxLength={19}/></div><div style={{display:"flex",gap:12}}><div style={{flex:1}}><label style={Sb.label}>Expiry</label><input placeholder="MM/YY" value={fields.expiry} onChange={e=>setFields(f=>({...f,expiry:e.target.value}))} style={Sb.input} maxLength={5}/></div><div style={{flex:1}}><label style={Sb.label}>CVV</label><input placeholder="123" value={fields.cvv} onChange={e=>setFields(f=>({...f,cvv:e.target.value}))} style={Sb.input} maxLength={4} type="password"/></div></div></>)}
-          {payMethod==="paypal"&&<div style={{background:"#132236",borderRadius:12,padding:24,textAlign:"center"}}><div style={{fontSize:40,marginBottom:8}}>🅿️</div><p style={{color:"#5a7a96",fontSize:14,margin:0}}>Redirected to PayPal to complete payment securely.</p></div>}
-          {payMethod==="afterpay"&&<div style={{background:"#132236",borderRadius:12,padding:24,textAlign:"center"}}><div style={{fontSize:40,marginBottom:8}}>🟢</div><p style={{color:"#5a7a96",fontSize:14,margin:"0 0 8px"}}>4 fortnightly instalments of</p><div style={{color:"#ffffff",fontSize:24,fontWeight:900}}>${(plan.pro/4).toFixed(2)}</div></div>}
-          <div style={{background:"#132236",borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{color:"#5a7a96",fontSize:13}}>Total today</span><span style={{color:"#ffffff",fontWeight:800,fontSize:18}}>${plan.pro} AUD</span></div>
-          <button onClick={handlePay} style={{...Sb.ctaBtn,opacity:processing?0.7:1}} disabled={processing}>{processing?"Processing...":"🔒 Pay Now & Activate Pro"}</button>
-          <p style={{color:"#5a7a96",fontSize:11,textAlign:"center",margin:0}}>Secured by Paddle. IT Service Link | ABN 78 336 526 604</p>
+          <div style={{background:"#132236",borderRadius:10,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{color:"#5a7a96",fontSize:13}}>Total {billing==="annual"?"per year":"per month"}</span>
+            <span style={{color:"#ffffff",fontWeight:800,fontSize:20}}>${plan.pro} AUD</span>
+          </div>
+          <button onClick={handleCheckout} disabled={processing} style={{...Sb.ctaBtn,opacity:processing?0.7:1}}>{processing?"Redirecting to checkout…":"🔒 Continue to Secure Checkout"}</button>
+          <p style={{color:"#5a7a96",fontSize:11,textAlign:"center",margin:0}}>Payments processed securely by Stripe. Your card details never touch our servers.<br/>IT Service Link | ABN 78 336 526 604</p>
           <button onClick={()=>setScreen("dashboard")} style={{background:"transparent",border:"none",color:"#5a7a96",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>Cancel, go back</button>
         </div>
       </div>
