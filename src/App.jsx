@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.41";
+const APP_VERSION="260725.42";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -1886,22 +1886,32 @@ function AdminDashboard({onClose}){
                               🧾 Invoice
                             </button>
                             <button onClick={async()=>{
-                              if(!window.confirm(`Refund ${u.name} (${total}) and cancel their subscription? This cannot be undone.`))return;
+                              const hasPayment=!!u.stripe_customer_id;
+                              const confirmMsg=hasPayment
+                                ?`Refund ${u.name} (${total}) and cancel their subscription? This cannot be undone.`
+                                :`${u.name} has no Stripe payment on record (upgraded manually). Downgrade them to Free? No money will be refunded.`;
+                              if(!window.confirm(confirmMsg))return;
                               try{
                                 const resp=await fetch("https://scan-api-production-6f04.up.railway.app/api/stripe/refund",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})});
                                 const data=await resp.json();
                                 if(data.ok){
-                                  const subject=encodeURIComponent("Your Scan365.ai refund has been processed");
-                                  const body=encodeURIComponent(`Dear ${u.name},\n\nThank you for contacting us. We're writing to confirm that your refund of ${total} for your Scan365.ai Pro subscription has been processed successfully.\n\nThe funds have been returned to your original payment method. Please allow 3 to 5 business days for the amount to appear in your account, depending on your bank or card provider.\n\nYour Pro subscription has been cancelled and your account has been returned to the Free plan. You're welcome to continue using Scan365.ai's free security scans at any time, and to upgrade again whenever it suits you.\n\nIf you have any questions about this refund or your account, simply reply to this email and our team will be glad to help.\n\nThank you for choosing Scan365.ai. We appreciate the opportunity to support your cybersecurity, and we hope to welcome you back in the future.\n\nWarm regards,\nThe Scan365.ai Team\nIT Service Link | ABN 78 336 526 604\nadmin@itsl.com.au | www.scan365.ai`);
-                                  window.open(`mailto:${u.email}?subject=${subject}&body=${body}`,"_blank");
-                                  alert(`Refund processed for ${u.name}.${data.refunded?" Payment refunded via Stripe.":" (No charge found to refund, but subscription cancelled and downgraded.)"} An email draft has opened for you to send.`);
+                                  if(data.refunded){
+                                    const subject=encodeURIComponent("Your Scan365.ai refund has been processed");
+                                    const body=encodeURIComponent(`Dear ${u.name},\n\nThank you for contacting us. We're writing to confirm that your refund of ${total} for your Scan365.ai Pro subscription has been processed successfully.\n\nThe funds have been returned to your original payment method. Please allow 3 to 5 business days for the amount to appear in your account, depending on your bank or card provider.\n\nYour Pro subscription has been cancelled and your account has been returned to the Free plan. You're welcome to continue using Scan365.ai's free security scans at any time, and to upgrade again whenever it suits you.\n\nIf you have any questions about this refund or your account, simply reply to this email and our team will be glad to help.\n\nThank you for choosing Scan365.ai. We appreciate the opportunity to support your cybersecurity, and we hope to welcome you back in the future.\n\nWarm regards,\nThe Scan365.ai Team\nIT Service Link | ABN 78 336 526 604\nadmin@itsl.com.au | www.scan365.ai`);
+                                    window.open(`mailto:${u.email}?subject=${subject}&body=${body}`,"_blank");
+                                    alert(`Refund processed for ${u.name}. Payment refunded via Stripe and subscription cancelled. An email draft has opened for you to send.`);
+                                  }else if(data.hadStripePayment){
+                                    alert(`${u.name} downgraded to Free and subscription cancelled. Note: no refundable charge was found (it may already be refunded or too old).`);
+                                  }else{
+                                    alert(`${u.name} was upgraded manually (no Stripe payment). They've been downgraded to Free. No money needed to be refunded.`);
+                                  }
                                   window.location.reload();
                                 }else{
-                                  alert("Refund failed: "+(data.error||"unknown error"));
+                                  alert("Action failed: "+(data.error||"unknown error"));
                                 }
-                              }catch(e){alert("Refund request failed: "+e.message);}
+                              }catch(e){alert("Request failed: "+e.message);}
                             }} style={{background:"transparent",border:`1px solid ${C.crimson}`,borderRadius:6,padding:"4px 10px",color:C.crimson,cursor:"pointer",fontSize:11,fontWeight:600}}>
-                              ↩ Refund
+                              ↩ {u.stripe_customer_id?"Refund":"Downgrade"}
                             </button>
                           </td>
                         </tr>
