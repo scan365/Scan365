@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.43";
+const APP_VERSION="260725.44";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -1575,8 +1575,14 @@ function ChatBot({user,results}){
     if(!leadForm.name||!leadForm.email)return;
     setSending(true);
     await saveLead({...leadForm,source:"chatbot"});
+    // Send a real notification email to admin inboxes
+    let emailed=false;
+    try{
+      const resp=await fetch("https://scan-api-production-6f04.up.railway.app/api/mail/lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(leadForm)});
+      const d=await resp.json();emailed=d.ok;
+    }catch(e){/* saved to DB regardless */}
     setSending(false);setLeadSent(true);setShowLead(false);
-    setMessages(m=>[...m,{role:"bot",text:`Your details have been saved and sent to admin@itsl.com.au. We will contact ${leadForm.email} within 1 business day. 😊`}]);
+    setMessages(m=>[...m,{role:"bot",text:emailed?`Thank you! Your details have been sent to our team and we will contact ${leadForm.email} within 1 business day. 😊`:`Thank you! Your details have been saved and our team will contact ${leadForm.email} within 1 business day. 😊`}]);
   };
 
   const QUICK=["👋 Hello Aria","📊 My risk score","🔐 Fix MFA","💰 Pro pricing","📧 Contact ITSL"];
@@ -1896,10 +1902,7 @@ function AdminDashboard({onClose}){
                                 const data=await resp.json();
                                 if(data.ok){
                                   if(data.refunded){
-                                    const subject=encodeURIComponent("Your Scan365.ai refund has been processed");
-                                    const body=encodeURIComponent(`Dear ${u.name},\n\nThank you for contacting us. We're writing to confirm that your refund of ${total} for your Scan365.ai Pro subscription has been processed successfully.\n\nThe funds have been returned to your original payment method. Please allow 3 to 5 business days for the amount to appear in your account, depending on your bank or card provider.\n\nYour Pro subscription has been cancelled and your account has been returned to the Free plan. You're welcome to continue using Scan365.ai's free security scans at any time, and to upgrade again whenever it suits you.\n\nIf you have any questions about this refund or your account, simply reply to this email and our team will be glad to help.\n\nThank you for choosing Scan365.ai. We appreciate the opportunity to support your cybersecurity, and we hope to welcome you back in the future.\n\nWarm regards,\nThe Scan365.ai Team\nIT Service Link | ABN 78 336 526 604\nadmin@itsl.com.au | www.scan365.ai`);
-                                    window.open(`mailto:${u.email}?subject=${subject}&body=${body}`,"_blank");
-                                    alert(`Refund processed for ${u.name}. Payment refunded via Stripe and subscription cancelled. An email draft has opened for you to send.`);
+                                    alert(`Refund processed for ${u.name}. Payment refunded via Stripe and subscription cancelled.${data.emailSent?" A confirmation email was sent to the customer automatically.":" (Note: confirmation email could not be sent.)"}`);
                                   }else if(data.hadStripePayment){
                                     alert(`${u.name} downgraded to Free and subscription cancelled. Note: no refundable charge was found (it may already be refunded or too old).`);
                                   }else{
