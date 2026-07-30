@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 
 // ── App Version: update every release (format YYMMDD.NN) ─────────
-const APP_VERSION="260725.42";
+const APP_VERSION="260725.43";
 
 // ── App Version (update with every release: YYMMDD.NN) ──────────
 
@@ -2464,6 +2464,7 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
   const[history,setHistory]=useState([]);
   const[loading,setLoading]=useState(true);
   const[viewScan,setViewScan]=useState(null);
+  const[txns,setTxns]=useState([]);
   const scansLeft=Math.max(0,FREE_SCAN_LIMIT-(user.monthly_scans||0));
 
   useEffect(()=>{
@@ -2471,11 +2472,17 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
       if(user?.id){
         const h=await getScanHistory(user.id);
         setHistory(h||[]);
+        // Fetch permanent transaction history (payments + refunds)
+        try{
+          const resp=await fetch("https://scan-api-production-6f04.up.railway.app/api/stripe/transactions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:user.id})});
+          const d=await resp.json();
+          if(d.transactions)setTxns(d.transactions);
+        }catch(e){/* non-fatal */}
       }
       setLoading(false);
     };
     load();
-  },[user?.id,user?.total_scans,user?.last_scan_at]);
+  },[user?.id,user?.total_scans,user?.last_scan_at,user?.plan]);
 
   const latestScan=history[0]||null;
   const overallScore=latestScan?.overall_score||null;
@@ -2867,6 +2874,28 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
             </div>
           )}
         </div>
+
+        {/* Transaction & Refund History (permanent record) */}
+        {txns.length>0&&(
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginTop:12}}>
+            <div style={{color:C.white,fontWeight:700,fontSize:14,marginBottom:4}}>🧾 Transaction & Refund History</div>
+            <div style={{color:C.muted,fontSize:11,marginBottom:12}}>Permanent record retained for 7 years per Australian tax law.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {txns.map((t,i)=>{
+                const isRefund=t.type==="refund";
+                return(
+                  <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",background:C.surface,borderRadius:8,borderLeft:`3px solid ${isRefund?C.amber:C.green}`,flexWrap:"wrap",gap:8}}>
+                    <div>
+                      <div style={{color:C.white,fontSize:13,fontWeight:600}}>{isRefund?"↩ Refund":"✓ Payment"} · Scan365.ai Pro {t.plan==="annual"?"(Annual)":"(Monthly)"}</div>
+                      <div style={{color:C.muted,fontSize:11}}>{new Date(t.created_at).toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})} · {t.status==="paid"?"Paid":t.status==="refunded"?"Refunded to original payment":"Cancelled"}</div>
+                    </div>
+                    <div style={{color:isRefund?C.amber:C.green,fontWeight:800,fontSize:14}}>{isRefund&&t.amount<0?"-":""}${Math.abs(t.amount).toFixed(2)} AUD</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Payment method and support */}
         <div style={{background:C.card,borderRadius:10,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
