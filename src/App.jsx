@@ -2862,7 +2862,7 @@ function UserDashboard({user,setScreen,onScan,isPro,setShowCompleteProfile,setSh
                             <div class="row total"><span>Total (incl. GST)</span><span>${inv.amount}</span></div>
                             <div class="paid">✓ PAID</div>
                             <div class="divider"></div>
-                            <p style="color:#666;font-size:12px;">Payment processed by Paddle · IT Service Link ABN 78 336 526 604<br/>admin@itsl.com.au · www.scan365.ai · www.itsl.au</p>
+                            <p style="color:#666;font-size:12px;">Payment processed by Stripe · IT Service Link ABN 78 336 526 604<br/>admin@itsl.com.au · www.scan365.ai · www.itsl.au</p>
                             </body></html>
                           `);
                           w.document.close();
@@ -4167,7 +4167,7 @@ function Footer(){
         </div>
         <div style={{borderTop:"1px solid #1e3a52",paddingTop:24,display:"flex",flexWrap:"wrap",gap:12,alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-            {[{icon:"🟦",t:"Microsoft",s:"AI Cloud Partner"},{icon:"🛡️",t:"ACSC",s:"Essential Eight Aligned"},{icon:"🔒",t:"SSL Secured",s:"256-bit encryption"},{icon:"💳",t:"Paddle",s:"Secure Payments"},{icon:"🏢",t:"IT Service Link",s:"ABN 78 336 526 604"}].map(({icon,t,s})=>(<div key={t} style={{background:"#132236",border:"1px solid #1e3a52",borderRadius:10,padding:"7px 12px",display:"flex",alignItems:"center",gap:7}}><span style={{fontSize:16}}>{icon}</span><div><div style={{color:"#ffffff",fontSize:11,fontWeight:700}}>{t}</div><div style={{color:"#00d4ff",fontSize:9,fontWeight:600}}>{s}</div></div></div>))}
+            {[{icon:"🟦",t:"Microsoft",s:"AI Cloud Partner"},{icon:"🛡️",t:"ACSC",s:"Essential Eight Aligned"},{icon:"🔒",t:"SSL Secured",s:"256-bit encryption"},{icon:"💳",t:"Stripe",s:"Secure Payments"},{icon:"🏢",t:"IT Service Link",s:"ABN 78 336 526 604"}].map(({icon,t,s})=>(<div key={t} style={{background:"#132236",border:"1px solid #1e3a52",borderRadius:10,padding:"7px 12px",display:"flex",alignItems:"center",gap:7}}><span style={{fontSize:16}}>{icon}</span><div><div style={{color:"#ffffff",fontSize:11,fontWeight:700}}>{t}</div><div style={{color:"#00d4ff",fontSize:9,fontWeight:600}}>{s}</div></div></div>))}
           </div>
           <div style={{color:"#5a7a96",fontSize:12}}>© 2026 IT Service Link. All rights reserved. · v{APP_VERSION}</div>
         </div>
