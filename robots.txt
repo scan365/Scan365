@@ -1,0 +1,8 @@
+# robots.txt for Scan365.ai
+# Allow all search engines to crawl the entire site
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://scan365.ai/sitemap.xml
