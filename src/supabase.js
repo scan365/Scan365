@@ -130,95 +130,33 @@ export async function upgradePlan(userId, plan, billingCycle, amount) {
 // ================================================================
 
 // Save scan result
+// Save scan result (via backend)
 export async function saveScan(userId, scanData, isPro) {
-  // ── Normalise: real scans use a flat shape (website/email/findings), old demo used .modules ──
-  const overall = scanData.overall_score ?? scanData.overallScore ?? 0;
-  const websiteScore = scanData.website_score ?? scanData.website?.score ?? scanData.modules?.website?.score ?? null;
-  const phishingScore = scanData.phishing_score ?? scanData.email?.score ?? scanData.modules?.phishing?.score ?? null;
-  const m365Score = scanData.m365_score ?? scanData.modules?.m365?.score ?? null;
-  const essential8Score = scanData.essential8_score ?? scanData.modules?.essential8?.score ?? null;
-
-  // Collect findings from whichever shape is present
-  const modulesObj = scanData.modules || {
-    website: scanData.website || { findings: [] },
-    phishing: scanData.email || { findings: [] },
-  };
-  const allFindings = [
-    ...(scanData.findings || []),
-    ...Object.values(modulesObj).flatMap(m => (m && m.findings) ? m.findings : []),
-  ];
-  const _sev = (f) => (f.sev || f.severity || 'low');
-  const criticalCount = allFindings.filter(f => _sev(f) === 'critical').length;
-  const highCount = allFindings.filter(f => _sev(f) === 'high').length;
-  const mediumCount = allFindings.filter(f => _sev(f) === 'medium').length;
-  const lowCount = allFindings.filter(f => _sev(f) === 'low').length;
-
-  const { data: scan, error } = await supabase
-    .from('scans')
-    .insert([{
-      user_id: userId,
-      domain: scanData.domain,
-      m365_domain: scanData.m365domain || null,
-      overall_score: overall,
-      risk_level: overall >= 70 ? 'Low Risk' : overall >= 45 ? 'Medium Risk' : 'High Risk',
-      website_score: websiteScore,
-      m365_score: m365Score,
-      essential8_score: essential8Score,
-      phishing_score: phishingScore,
-      critical_count: criticalCount,
-      high_count: highCount,
-      medium_count: mediumCount,
-      low_count: lowCount,
-      scan_data: scanData,
-      plan_at_scan: isPro ? 'pro' : 'free',
-    }])
-    .select()
-    .single();
-
-  if (error) return { error: error.message };
-
-  // Save individual findings (dedupe module source from whichever shape we have)
-  const findings = [];
-  const moduleEntries = scanData.modules
-    ? Object.entries(scanData.modules)
-    : [['website', scanData.website || { findings: [] }], ['phishing', scanData.email || { findings: [] }]];
-  moduleEntries.forEach(([module, data]) => {
-    ((data && data.findings) ? data.findings : []).forEach(f => {
-      findings.push({ scan_id: scan.id, module, severity: _sev(f), title: f.title || 'Finding', detail: f.detail || f.description || '' });
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/save-scan`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, scanData, isPro }),
     });
-  });
-  if (findings.length > 0) {
-    try{
-      const fr=await supabase.from('scan_findings').insert(findings);
-      if(fr.error)console.warn('scan_findings insert skipped:',fr.error.message);
-    }catch(e){console.warn('scan_findings insert failed (non-fatal):',e);}
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Could not save scan.' };
+    return { scan: result.scan };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
   }
-
-  // Increment user scan count. Try the RPC first; if it's missing/fails, update the row directly.
-  const rpcRes = await supabase.rpc('increment_scan_count', { user_id_param: userId });
-  if (rpcRes.error) {
-    const { data: u } = await supabase.from('users').select('total_scans, monthly_scans').eq('id', userId).single();
-    await supabase.from('users').update({
-      total_scans: (u?.total_scans || 0) + 1,
-      monthly_scans: (u?.monthly_scans || 0) + 1,
-      last_scan_at: new Date().toISOString(),
-    }).eq('id', userId);
-  }
-
-  await logAudit(userId, 'scan_completed', 'scans', scan.id, { domain: scanData.domain, score: overall });
-  return { scan };
 }
 
 // Get user scan history
 export async function getScanHistory(userId, limit = 10) {
-  const { data, error } = await supabase
-    .from('scans')
-    .select('id, domain, m365_domain, overall_score, risk_level, website_score, m365_score, essential8_score, phishing_score, critical_count, high_count, medium_count, low_count, scan_data, scanned_at')
-    .eq('user_id', userId)
-    .order('scanned_at', { ascending: false })
-    .limit(limit);
-  if (error) return [];
-  return data;
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/scan-history`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, limit }),
+    });
+    const result = await resp.json();
+    return result.history || [];
+  } catch (e) {
+    return [];
+  }
 }
 
 // ================================================================
@@ -226,18 +164,17 @@ export async function getScanHistory(userId, limit = 10) {
 // ================================================================
 
 export async function saveLead(leadData) {
-  const { error } = await supabase
-    .from('leads')
-    .insert([{
-      name: leadData.name,
-      email: leadData.email,
-      phone: leadData.phone || null,
-      interest: leadData.interest,
-      source: leadData.source || 'chatbot',
-      status: 'new',
-    }]);
-  if (error) return { error: error.message };
-  return { success: true };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/save-lead`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadData }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Could not save lead.' };
+    return { success: true };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
+  }
 }
 
 // ================================================================
