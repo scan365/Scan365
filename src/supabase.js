@@ -183,53 +183,48 @@ export async function saveLead(leadData) {
 
 // Get all users for admin dashboard
 export async function getAllUsers() {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('status', 'active')
-    .order('created_at', { ascending: false });
-  if (error) return [];
-  return data;
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/all-users`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const result = await resp.json();
+    return result.users || [];
+  } catch (e) { return []; }
 }
 
 // Get all leads
 export async function getAllLeads() {
-  const { data, error } = await supabase
-    .from('leads')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) return [];
-  return data;
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/all-leads`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const result = await resp.json();
+    return result.leads || [];
+  } catch (e) { return []; }
 }
 
 // Get sales dashboard stats
 export async function getSalesStats() {
-  const { data, error } = await supabase
-    .from('sales_dashboard')
-    .select('*')
-    .single();
-  if (error) return null;
-  return data;
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/sales-stats`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const result = await resp.json();
+    return result.stats || null;
+  } catch (e) { return null; }
 }
 
 // Get marketing view
 export async function getMarketingData() {
-  const { data, error } = await supabase
-    .from('marketing_view')
-    .select('*')
-    .order('joined', { ascending: false });
-  if (error) return [];
-  return data;
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/marketing-data`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const result = await resp.json();
+    return result.data || [];
+  } catch (e) { return []; }
 }
 
 // Update lead status
 export async function updateLeadStatus(leadId, status, notes) {
-  const { error } = await supabase
-    .from('leads')
-    .update({ status, notes, updated_at: new Date().toISOString() })
-    .eq('id', leadId);
-  if (error) return { error: error.message };
-  return { success: true };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/update-lead`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId, status, notes }) });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Update failed.' };
+    return { success: true };
+  } catch (e) { return { error: 'Could not reach the server. Please try again.' }; }
 }
 
 // Admin reset password (via backend - hashed)
@@ -251,25 +246,21 @@ export async function adminResetPassword(userId, newPassword) {
 
 // Push user to pro
 export async function pushToPro(userId) {
-  const expires = new Date();
-  expires.setMonth(expires.getMonth() + 1);
-  const { error } = await supabase
-    .from('users')
-    .update({ plan: 'pro', plan_expires_at: expires.toISOString(), updated_at: new Date().toISOString() })
-    .eq('id', userId);
-  if (error) return { error: error.message };
-  await logAudit(userId, 'admin_pushed_to_pro', 'users', userId, {});
-  return { success: true };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/push-to-pro`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Failed.' };
+    return { success: true };
+  } catch (e) { return { error: 'Could not reach the server. Please try again.' }; }
 }
 
 export async function cancelPro(userId) {
-  const { error } = await supabase
-    .from('users')
-    .update({ plan: 'free', plan_expires_at: null, updated_at: new Date().toISOString() })
-    .eq('id', userId);
-  if (error) return { error: error.message };
-  await logAudit(userId, 'admin_cancelled_pro', 'users', userId, {});
-  return { success: true };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/cancel-pro`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Failed.' };
+    return { success: true };
+  } catch (e) { return { error: 'Could not reach the server. Please try again.' }; }
 }
 
 // ================================================================
@@ -306,63 +297,22 @@ export async function checkMonthlyReset(user) {
 
 // Step 1: Request password reset - generates a token and saves it
 export async function requestPasswordReset(email) {
-  const user = await getUser(email.toLowerCase().trim());
-  if (!user) return { error: 'No account found with this email address. Please check the email or sign up.' };
-
-  // If OAuth account, tell user to sign in with their provider
-  if (user.auth_provider && user.auth_provider !== 'email') {
-    const provider = user.auth_provider.charAt(0).toUpperCase() + user.auth_provider.slice(1);
-    return { 
-      error: `This email is linked to ${provider} sign-in. Please use the ${provider} button to sign in instead of a password reset.`,
-      isOAuth: true,
-      provider: user.auth_provider
-    };
-  }
-
-  // Generate a 6-digit reset code
-  const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-
-  // Save reset token to database
-  const { error } = await supabase
-    .from('password_resets')
-    .insert([{
-      user_id: user.id,
-      token: resetCode,
-      expires_at: expiresAt.toISOString(),
-      used: false,
-    }]);
-
-  if (error) return { error: error.message };
-
-  await logAudit(user.id, 'password_reset_requested', 'users', user.id, { email });
-
-  // In production this would send an email via Supabase Edge Functions
-  // For now we return the code so you can test it
-  console.log(`[SCAN365 DEV] Password reset code for ${email}: ${resetCode}`);
-
-  return { success: true, resetCode, userId: user.id };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/request-reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Reset request failed.', isOAuth: result.isOAuth, provider: result.provider };
+    return { success: true, resetCode: result.resetCode, userId: result.userId };
+  } catch (e) { return { error: 'Could not reach the server. Please try again.' }; }
 }
 
 // Step 2: Verify reset code
 export async function verifyResetCode(email, code) {
-  const user = await getUser(email);
-  if (!user) return { error: 'No account found.' };
-
-  const { data: reset, error } = await supabase
-    .from('password_resets')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('token', code)
-    .eq('used', false)
-    .gt('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (error || !reset) return { error: 'Invalid or expired reset code. Please request a new one.' };
-
-  return { success: true, userId: user.id, resetId: reset.id };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/verify-reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }) });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Invalid code.' };
+    return { success: true, userId: result.userId, resetId: result.resetId };
+  } catch (e) { return { error: 'Could not reach the server. Please try again.' }; }
 }
 
 // Step 3: Set new password after verification
@@ -385,8 +335,8 @@ export async function resetPasswordWithCode(email, code, newPassword) {
     return { error: 'Could not reach the server. Please try again.' };
   }
 
-  // Mark token as used
-  await supabase.from('password_resets').update({ used: true }).eq('id', resetId);
+  // Mark token as used (via backend)
+  try { await fetch(`${API_BASE}/api/data/mark-reset-used`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetId }) }); } catch (e) {}
 
   await logAudit(userId, 'password_reset_completed', 'users', userId, {});
   return { success: true };
