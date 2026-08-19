@@ -10,54 +10,44 @@ const SUPABASE_KEY = 'sb_publishable_F1qk8l7AixkWYwGAKh8w6g_haZk4n6c';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Backend API base (auth + payments run server-side with hashing/RLS-safe keys)
+const API_BASE = 'https://scan-api-production-6f04.up.railway.app';
+
+
 // ================================================================
 // USER FUNCTIONS
 // ================================================================
 
 // Register new user
 export async function registerUser(data) {
-  const { data: existing } = await supabase
-    .from('users')
-    .select('id')
-    .eq('email', data.email)
-    .single();
-  if (existing) return { error: 'Email already registered.' };
-
-  const { data: user, error } = await supabase
-    .from('users')
-    .insert([{
-      name: data.name,
-      email: data.email,
-      password_hash: data.password,
-      company: data.company || '',
-      auth_provider: data.authProvider || 'email',
-      profile_complete: false,
-      plan: 'free',
-    }])
-    .select()
-    .single();
-
-  if (error) return { error: error.message };
-
-  await logAudit(user.id, 'user_registered', 'users', user.id, { provider: data.authProvider });
-  return { user };
+  try {
+    const resp = await fetch(`${API_BASE}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Registration failed.' };
+    return { user: result.user };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
+  }
 }
 
-// Login user
+// Login user (via backend - bcrypt verification, auto-upgrades legacy passwords)
 export async function loginUser(email, password) {
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', email.toLowerCase())
-    .eq('status', 'active')
-    .single();
-
-  if (error || !user) return { error: 'No account found with this email.' };
-  if (user.password_hash !== password) return { error: 'Incorrect password.' };
-
-  await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id);
-  await logAudit(user.id, 'user_login', 'users', user.id, {});
-  return { user };
+  try {
+    const resp = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Login failed.' };
+    return { user: result.user };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
+  }
 }
 
 // Get user by email
@@ -82,15 +72,20 @@ export async function updateProfile(userId, profileData) {
   return { success: true };
 }
 
-// Update password
+// Update password (via backend - stored as bcrypt hash)
 export async function updatePassword(userId, newPassword) {
-  const { error } = await supabase
-    .from('users')
-    .update({ password_hash: newPassword, updated_at: new Date().toISOString() })
-    .eq('id', userId);
-  if (error) return { error: error.message };
-  await logAudit(userId, 'password_changed', 'users', userId, {});
-  return { success: true };
+  try {
+    const resp = await fetch(`${API_BASE}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, newPassword }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Password change failed.' };
+    return { success: true };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
+  }
 }
 
 // Toggle MFA
@@ -296,15 +291,21 @@ export async function updateLeadStatus(leadId, status, notes) {
   return { success: true };
 }
 
-// Admin reset password
+// Admin reset password (via backend - hashed)
 export async function adminResetPassword(userId, newPassword) {
-  const { error } = await supabase
-    .from('users')
-    .update({ password_hash: newPassword, updated_at: new Date().toISOString() })
-    .eq('id', userId);
-  if (error) return { error: error.message };
-  await logAudit(userId, 'admin_password_reset', 'users', userId, {});
-  return { success: true };
+  try {
+    const resp = await fetch(`${API_BASE}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, newPassword }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Reset failed.' };
+    await logAudit(userId, 'admin_password_reset', 'users', userId, {});
+    return { success: true };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
+  }
 }
 
 // Push user to pro
@@ -432,13 +433,18 @@ export async function resetPasswordWithCode(email, code, newPassword) {
 
   if (newPassword.length < 8) return { error: 'Password must be at least 8 characters.' };
 
-  // Update password
-  const { error: updateError } = await supabase
-    .from('users')
-    .update({ password_hash: newPassword, updated_at: new Date().toISOString() })
-    .eq('id', userId);
-
-  if (updateError) return { error: updateError.message };
+  // Update password via backend (stored as bcrypt hash)
+  try {
+    const resp = await fetch(`${API_BASE}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, newPassword }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Password reset failed.' };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
+  }
 
   // Mark token as used
   await supabase.from('password_resets').update({ used: true }).eq('id', resetId);
