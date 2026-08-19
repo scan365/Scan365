@@ -50,26 +50,33 @@ export async function loginUser(email, password) {
   }
 }
 
-// Get user by email
+// Get user by email (via backend)
 export async function getUser(email) {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', email.toLowerCase())
-    .single();
-  if (error) return null;
-  return data;
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/get-user`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const result = await resp.json();
+    return result.user || null;
+  } catch (e) {
+    return null;
+  }
 }
 
-// Update user profile
+// Update user profile (via backend)
 export async function updateProfile(userId, profileData) {
-  const { error } = await supabase
-    .from('users')
-    .update({ ...profileData, profile_complete: true, updated_at: new Date().toISOString() })
-    .eq('id', userId);
-  if (error) return { error: error.message };
-  await logAudit(userId, 'profile_updated', 'users', userId, {});
-  return { success: true };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/update-profile`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, profileData }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Update failed.' };
+    return { success: true };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
+  }
 }
 
 // Update password (via backend - stored as bcrypt hash)
@@ -88,37 +95,34 @@ export async function updatePassword(userId, newPassword) {
   }
 }
 
-// Toggle MFA
+// Toggle MFA (via backend)
 export async function toggleMFA(userId, currentState) {
-  const { error } = await supabase
-    .from('users')
-    .update({ mfa_enabled: !currentState, updated_at: new Date().toISOString() })
-    .eq('id', userId);
-  if (error) return { error: error.message };
-  await logAudit(userId, currentState ? 'mfa_disabled' : 'mfa_enabled', 'users', userId, {});
-  return { success: true, mfaEnabled: !currentState };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/toggle-mfa`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, currentState }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'MFA toggle failed.' };
+    return { success: true, mfaEnabled: result.mfaEnabled };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
+  }
 }
 
-// Upgrade to pro
+// Upgrade to pro (via backend)
 export async function upgradePlan(userId, plan, billingCycle, amount) {
-  const expires = new Date();
-  if (billingCycle === 'monthly') expires.setMonth(expires.getMonth() + 1);
-  else if (billingCycle === 'quarterly') expires.setMonth(expires.getMonth() + 3);
-  else expires.setFullYear(expires.getFullYear() + 1);
-
-  const { error } = await supabase
-    .from('users')
-    .update({ plan, plan_expires_at: expires.toISOString(), updated_at: new Date().toISOString() })
-    .eq('id', userId);
-  if (error) return { error: error.message };
-
-  await supabase.from('subscriptions').insert([{
-    user_id: userId, plan, billing_cycle: billingCycle,
-    amount_aud: amount, status: 'active', expires_at: expires.toISOString(),
-  }]);
-
-  await logAudit(userId, 'plan_upgraded', 'subscriptions', userId, { plan, billingCycle });
-  return { success: true };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/upgrade-plan`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, plan, billingCycle, amount }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) return { error: result.error || 'Upgrade failed.' };
+    return { success: true };
+  } catch (e) {
+    return { error: 'Could not reach the server. Please try again.' };
+  }
 }
 
 // ================================================================
@@ -335,30 +339,28 @@ export async function cancelPro(userId) {
 // AUDIT LOG
 // ================================================================
 export async function logAudit(userId, action, entity, entityId, details) {
-  await supabase.from('audit_log').insert([{
-    user_id: userId || null,
-    action,
-    entity,
-    entity_id: entityId || null,
-    details,
-    created_at: new Date().toISOString(),
-  }]);
+  try {
+    await fetch(`${API_BASE}/api/data/log-audit`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, action, entity, entityId, details }),
+    });
+  } catch (e) { /* non-fatal */ }
 }
 
 // ================================================================
 // MONTHLY SCAN RESET CHECK
 // ================================================================
 export async function checkMonthlyReset(user) {
-  const resetDate = new Date(user.monthly_reset_at);
-  const now = new Date();
-  if (now.getMonth() !== resetDate.getMonth() || now.getFullYear() !== resetDate.getFullYear()) {
-    await supabase
-      .from('users')
-      .update({ monthly_scans: 0, monthly_reset_at: now.toISOString().slice(0, 10) })
-      .eq('id', user.id);
-    return { ...user, monthly_scans: 0 };
+  try {
+    const resp = await fetch(`${API_BASE}/api/data/check-monthly-reset`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user }),
+    });
+    const result = await resp.json();
+    return result.user || user;
+  } catch (e) {
+    return user;
   }
-  return user;
 }
 
 // ================================================================
